@@ -694,13 +694,16 @@ final class CmuxConfigDecodingTests: XCTestCase {
         let store = CmuxConfigStore(globalConfigPath: configURL.path)
         store.loadAll()
         XCTAssertNotNil(store.resolvedAction(id: "first"))
-        XCTAssertNil(store.resolvedAction(id: "second"))
+        XCTAssertNil(store.resolvedAction(id: "other"))
+        let originalModificationDate = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: configURL.path)[.modificationDate] as? Date
+        )
 
         let didAutoReload = expectation(description: "cmux.json should not hot reload")
         didAutoReload.isInverted = true
         var cancellable: AnyCancellable?
         cancellable = store.$loadedActions.dropFirst().sink { actions in
-            if actions.contains(where: { $0.id == "second" }) {
+            if actions.contains(where: { $0.id == "other" }) {
                 didAutoReload.fulfill()
             }
         }
@@ -708,18 +711,22 @@ final class CmuxConfigDecodingTests: XCTestCase {
         try """
         {
           "actions": {
-            "second": { "type": "command", "command": "echo second" }
+            "other": { "type": "command", "command": "echo other" }
           }
         }
         """.write(to: configURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: originalModificationDate],
+            ofItemAtPath: configURL.path
+        )
 
         await fulfillment(of: [didAutoReload], timeout: 0.25)
         XCTAssertNotNil(store.resolvedAction(id: "first"))
-        XCTAssertNil(store.resolvedAction(id: "second"))
+        XCTAssertNil(store.resolvedAction(id: "other"))
 
         store.loadAll()
         XCTAssertNil(store.resolvedAction(id: "first"))
-        XCTAssertNotNil(store.resolvedAction(id: "second"))
+        XCTAssertNotNil(store.resolvedAction(id: "other"))
         cancellable?.cancel()
     }
 
@@ -1141,7 +1148,7 @@ final class CmuxConfigDecodingTests: XCTestCase {
     }
 
     @MainActor
-    func testActionCatalogResolvesPerDirectoryWithoutMutatingPublishedStore() throws {
+    func testActionCatalogResolvesPerDirectoryWithoutMutatingPublishedStore() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "cmux-config-store-\(UUID().uuidString)",
             isDirectory: true
@@ -1208,8 +1215,8 @@ final class CmuxConfigDecodingTests: XCTestCase {
         let ambientSourcePaths = store.commandSourcePaths
         let ambientIssues = store.configurationIssues
 
-        let catalogA = store.actionCatalog(startingFrom: projectA.path)
-        let catalogB = store.actionCatalog(startingFrom: projectB.path)
+        let catalogA = await store.refreshActionCatalog(startingFrom: projectA.path)
+        let catalogB = await store.refreshActionCatalog(startingFrom: projectB.path)
 
         XCTAssertEqual(catalogA.resolvedAction(id: "project.action")?.workspaceCommandName, "Project A")
         XCTAssertEqual(catalogB.resolvedAction(id: "project.action")?.workspaceCommandName, "Project B")
@@ -1222,6 +1229,18 @@ final class CmuxConfigDecodingTests: XCTestCase {
         XCTAssertEqual(catalogA.loadedCommands.map(\.name), ["Project A"])
         XCTAssertEqual(catalogB.loadedCommands.map(\.name), ["Project B"])
 
+        let unchangedSnapshotA = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectA.path,
+            revalidate: false
+        ))
+        _ = await store.refreshActionCatalog(startingFrom: projectA.path)
+        XCTAssertEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectA.path,
+                revalidate: false
+            )?.id,
+            unchangedSnapshotA.id
+        )
         XCTAssertEqual(store.localConfigPath, ambientLocalPath)
         XCTAssertEqual(store.configRevision, ambientRevision)
         XCTAssertEqual(store.loadedActions, ambientActions)
@@ -1231,6 +1250,185 @@ final class CmuxConfigDecodingTests: XCTestCase {
         )
         XCTAssertEqual(store.commandSourcePaths, ambientSourcePaths)
         XCTAssertEqual(store.configurationIssues, ambientIssues)
+
+        let snapshotBBeforeEdit = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            revalidate: false
+        ))
+        let snapshotABeforeNoopReload = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectA.path,
+            revalidate: false
+        ))
+        store.loadAll()
+        XCTAssertEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectA.path,
+                revalidate: false
+            )?.id,
+            snapshotABeforeNoopReload.id
+        )
+        XCTAssertEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectB.path,
+                revalidate: false
+            )?.id,
+            snapshotBBeforeEdit.id
+        )
+
+        try """
+        {
+          "actions": {
+            "project.action": { "type": "workspaceCommand", "commandName": "Project C" },
+            "cmux.newTerminal": { "title": "Terminal C" }
+          },
+          "commands": [{
+            "name": "Project C",
+            "workspace": { "name": "C" }
+          }]
+        }
+        """.write(to: configB, atomically: true, encoding: .utf8)
+        let staleCatalogB = try XCTUnwrap(
+            store.cachedActionCatalog(startingFrom: projectB.path)
+        )
+        XCTAssertEqual(
+            staleCatalogB.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project B"
+        )
+
+        var revalidatedCatalogB: CmuxConfigActionCatalog?
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(10))
+            let candidate = store.cachedActionCatalog(
+                startingFrom: projectB.path,
+                revalidate: false
+            )
+            if candidate?.resolvedAction(id: "project.action")?.workspaceCommandName == "Project C" {
+                revalidatedCatalogB = candidate
+                break
+            }
+        }
+        XCTAssertEqual(
+            revalidatedCatalogB?.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project C"
+        )
+        let snapshotBAfterEdit = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            revalidate: false
+        ))
+        XCTAssertNotEqual(snapshotBAfterEdit.id, snapshotBBeforeEdit.id)
+        let freshSnapshotBValue = await store.freshActionCatalogSnapshot(
+            startingFrom: projectB.path
+        )
+        let freshSnapshotB = try XCTUnwrap(freshSnapshotBValue)
+        XCTAssertEqual(freshSnapshotB.id, snapshotBAfterEdit.id)
+        XCTAssertEqual(
+            freshSnapshotB.catalog.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project C"
+        )
+        let expiredSnapshot = await store.freshActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            deadline: .distantPast
+        )
+        XCTAssertNil(expiredSnapshot)
+        let distantFutureSnapshot = await store.freshActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            deadline: .distantFuture
+        )
+        XCTAssertNotNil(distantFutureSnapshot)
+
+        // Start a background revalidation before the edit. The automation
+        // freshness boundary must wait for that older generation, then issue
+        // or join a read that began after this request.
+        _ = store.cachedActionCatalog(startingFrom: projectB.path)
+        try """
+        {
+          "actions": {
+            "project.action": { "type": "workspaceCommand", "commandName": "Project D" },
+            "cmux.newTerminal": { "title": "Terminal D" }
+          },
+          "commands": [{
+            "name": "Project D",
+            "workspace": { "name": "D" }
+          }]
+        }
+        """.write(to: configB, atomically: true, encoding: .utf8)
+        let postRequestSnapshotValue = await store.freshActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            deadline: Date(timeIntervalSinceNow: 5)
+        )
+        let postRequestSnapshot = try XCTUnwrap(postRequestSnapshotValue)
+        XCTAssertEqual(
+            postRequestSnapshot.catalog.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project D"
+        )
+        XCTAssertNotEqual(postRequestSnapshot.id, freshSnapshotB.id)
+
+        // A standalone global refresh can observe the edited bytes before the
+        // synchronous reload. It must not advance the all-cwd invalidation
+        // baseline or leave project B carrying the old global source.
+        try """
+        {
+          "actions": {
+            "global.action": { "type": "command", "command": "echo global changed" }
+          }
+        }
+        """.write(to: globalConfig, atomically: true, encoding: .utf8)
+        _ = await store.refreshActionCatalog(startingFrom: nil)
+        store.loadAll()
+        XCTAssertNil(store.cachedActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            revalidate: false
+        ))
+        let postGlobalReloadCatalogB = await store.refreshActionCatalog(startingFrom: projectB.path)
+        XCTAssertEqual(
+            postGlobalReloadCatalogB.resolvedAction(id: "global.action")?.terminalCommand,
+            "echo global changed"
+        )
+        XCTAssertNotEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectB.path,
+                revalidate: false
+            )?.id,
+            postRequestSnapshot.id
+        )
+
+        try FileManager.default.removeItem(at: configB)
+        let cachedCatalogB = try XCTUnwrap(
+            store.cachedActionCatalog(startingFrom: projectB.path, revalidate: false)
+        )
+        XCTAssertEqual(
+            cachedCatalogB.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project D"
+        )
+
+        let refreshedCatalogB = await store.refreshActionCatalog(startingFrom: projectB.path)
+        XCTAssertNil(refreshedCatalogB.resolvedAction(id: "project.action"))
+        XCTAssertNotNil(refreshedCatalogB.resolvedAction(id: "global.action"))
+        XCTAssertNotEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectB.path,
+                revalidate: false
+            )?.id,
+            snapshotBAfterEdit.id
+        )
+    }
+
+    func testActionCatalogCacheKeyRequiresAbsolutePathAndExpandsHome() {
+        let globalKey = CmuxConfigStore.actionCatalogCacheKey(startingFrom: nil)
+        XCTAssertEqual(
+            CmuxConfigStore.actionCatalogCacheKey(startingFrom: "relative/project"),
+            globalKey
+        )
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+        XCTAssertEqual(
+            CmuxConfigStore.actionCatalogCacheKey(startingFrom: "~"),
+            home.path
+        )
+        XCTAssertEqual(
+            CmuxConfigStore.actionCatalogCacheKey(startingFrom: "~/project/../repo"),
+            home.appendingPathComponent("repo", isDirectory: true).standardizedFileURL.path
+        )
     }
 
     @MainActor

@@ -4650,8 +4650,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             "mainWindow.register windowId=\(String(windowId.uuidString.prefix(8))) window={\(debugWindowToken(window))} manager=\(debugManagerToken(tabManager)) priorActiveMgr=\(priorManagerToken) \(debugShortcutRouteSnapshot())"
         )
 #endif
-        let isCommandPaletteControlReady = mainWindowContext(for: tabManager)?
+        let commandPaletteContext = mainWindowContext(for: tabManager)
+        let isCommandPaletteControlReady = commandPaletteContext?
             .commandPaletteControlHandler != nil
+            && commandPaletteContext?.cmuxConfigStore != nil
         if isCommandPaletteControlReady {
             activateSocketListener(
                 for: tabManager,

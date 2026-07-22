@@ -60,7 +60,10 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             sidebarState: SidebarState(),
             sidebarSelectionState: SidebarSelectionState(),
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            cmuxConfigStore: CmuxConfigStore(startFileWatchers: false),
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
 
         #expect(didPublishAfterHandler)
@@ -96,7 +99,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(appDelegate.mainWindowContext(for: tabManager)?.commandPaletteControlHandler == nil)
     }
 
-    @Test func registeredWindowPublishesItsHandlerWithItsRoutingContext() {
+    @Test func registeredWindowPublishesItsHandlerWithItsRoutingContext() async {
         let previousAppDelegate = AppDelegate.shared
         let appDelegate = AppDelegate()
         let tabManager = TabManager()
@@ -112,7 +115,7 @@ struct CommandPaletteControlRegistrationTests {
         let windowID = appDelegate.registerMainWindowContextForTesting(
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
-                request.complete(.listed([item]))
+                request.complete(.listed(target: request.target, commands: [item]))
             }
         )
         AppDelegate.shared = appDelegate
@@ -121,7 +124,7 @@ struct CommandPaletteControlRegistrationTests {
             AppDelegate.shared = previousAppDelegate
         }
 
-        let resolution = TerminalController.shared.controlCommandPaletteList(
+        let resolution = await TerminalController.shared.controlCommandPaletteList(
             routing: ControlRoutingSelectors(
                 hasWindowIDParam: true,
                 windowID: windowID,
@@ -129,7 +132,8 @@ struct CommandPaletteControlRegistrationTests {
                 workspaceID: nil,
                 surfaceID: nil,
                 paneID: nil
-            )
+            ),
+            deadline: nil
         )
 
         #expect(resolution == .listed(
@@ -151,7 +155,7 @@ struct CommandPaletteControlRegistrationTests {
         ))
     }
 
-    @Test func staleSelectorsDoNotFallBackToTheCallerWindow() {
+    @Test func staleSelectorsDoNotFallBackToTheCallerWindow() async {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -161,7 +165,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 handlerCalls += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -180,7 +184,10 @@ struct CommandPaletteControlRegistrationTests {
             routing(paneID: UUID()),
         ]
         for selector in staleSelectors {
-            let resolution = TerminalController.shared.controlCommandPaletteList(routing: selector)
+            let resolution = await TerminalController.shared.controlCommandPaletteList(
+                routing: selector,
+                deadline: nil
+            )
             #expect(resolution == .windowNotFound)
             let inlineResolution = TerminalController.shared.controlInlineVSCodeOpen(
                 routing: selector,
@@ -196,7 +203,10 @@ struct CommandPaletteControlRegistrationTests {
             routing(hasPaneIDParam: true),
         ]
         for selector in unresolvedSelectors {
-            let resolution = TerminalController.shared.controlCommandPaletteList(routing: selector)
+            let resolution = await TerminalController.shared.controlCommandPaletteList(
+                routing: selector,
+                deadline: nil
+            )
             #expect(resolution == .windowNotFound)
             let inlineResolution = TerminalController.shared.controlInlineVSCodeOpen(
                 routing: selector,
@@ -207,7 +217,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(handlerCalls == 0)
     }
 
-    @Test func crossWindowSelectorsDoNotRouteThroughAnExplicitWindow() throws {
+    @Test func crossWindowSelectorsDoNotRouteThroughAnExplicitWindow() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -226,14 +236,14 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: managerA,
             commandPaletteControlHandler: { request in
                 handlerCallsA += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         let windowB = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerB,
             commandPaletteControlHandler: { request in
                 handlerCallsB += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -252,7 +262,10 @@ struct CommandPaletteControlRegistrationTests {
             routing(windowID: windowA, paneID: paneB),
         ]
         for selector in crossWindowSelectors {
-            let resolution = TerminalController.shared.controlCommandPaletteList(routing: selector)
+            let resolution = await TerminalController.shared.controlCommandPaletteList(
+                routing: selector,
+                deadline: nil
+            )
             #expect(resolution == .windowNotFound)
             let inlineResolution = TerminalController.shared.controlInlineVSCodeOpen(
                 routing: selector,
@@ -264,7 +277,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(handlerCallsB == 0)
     }
 
-    @Test func validSelectorsAndNoSelectorRetainTheirWindowRouting() throws {
+    @Test func validSelectorsAndNoSelectorRetainTheirWindowRouting() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -279,11 +292,15 @@ struct CommandPaletteControlRegistrationTests {
         let paneB = try #require(workspaceB.bonsplitController.allPaneIds.first).id
         let windowA = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerA,
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
         let windowB = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerB,
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
         AppDelegate.shared = appDelegate
         TerminalController.shared.setActiveTabManager(managerA)
@@ -301,7 +318,10 @@ struct CommandPaletteControlRegistrationTests {
             routing(paneID: paneB),
         ]
         for selector in validSelectors {
-            let resolution = TerminalController.shared.controlCommandPaletteList(routing: selector)
+            let resolution = await TerminalController.shared.controlCommandPaletteList(
+                routing: selector,
+                deadline: nil
+            )
             guard case .listed(let target, _) = resolution else {
                 Issue.record("Expected valid selector to route to its owning window")
                 continue
@@ -309,7 +329,10 @@ struct CommandPaletteControlRegistrationTests {
             #expect(target.windowID == windowB)
         }
 
-        let fallback = TerminalController.shared.controlCommandPaletteList(routing: routing())
+        let fallback = await TerminalController.shared.controlCommandPaletteList(
+            routing: routing(),
+            deadline: nil
+        )
         guard case .listed(let fallbackTarget, _) = fallback else {
             Issue.record("Expected an omitted selector to route to the caller window")
             return
@@ -317,7 +340,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(fallbackTarget.windowID == windowA)
     }
 
-    @Test func workspaceSelectorReachesTheHandlerWithoutChangingSelection() throws {
+    @Test func workspaceSelectorReachesTheHandlerWithoutChangingSelection() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -329,7 +352,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 receivedTarget = request.target
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -340,8 +363,9 @@ struct CommandPaletteControlRegistrationTests {
             AppDelegate.shared = previousAppDelegate
         }
 
-        let resolution = TerminalController.shared.controlCommandPaletteList(
-            routing: routing(workspaceID: targetWorkspace.id)
+        let resolution = await TerminalController.shared.controlCommandPaletteList(
+            routing: routing(workspaceID: targetWorkspace.id),
+            deadline: nil
         )
 
         #expect(resolution == .listed(
@@ -360,7 +384,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(tabManager.selectedWorkspace?.id == selectedWorkspace.id)
     }
 
-    @Test func listedIdentityCanBeEchoedAfterFocusChangesWithoutRetargetingRun() throws {
+    @Test func listedIdentityCanBeEchoedAfterFocusChangesWithoutRetargetingRun() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -378,13 +402,21 @@ struct CommandPaletteControlRegistrationTests {
             arguments: []
         )
         var receivedTargets: [CommandPaletteActionTarget] = []
+        let configSnapshotID = UUID()
         let windowID = appDelegate.registerMainWindowContextForTesting(
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
-                receivedTargets.append(request.target)
-                if receivedTargets.count == 1 {
-                    request.complete(.listed([item]))
+                if receivedTargets.isEmpty {
+                    let listedTarget = CommandPaletteActionTarget(
+                        windowID: request.target.windowID,
+                        workspaceID: request.target.workspaceID,
+                        panelID: request.target.panelID,
+                        configSnapshotID: configSnapshotID
+                    )
+                    receivedTargets.append(listedTarget)
+                    request.complete(.listed(target: listedTarget, commands: [item]))
                 } else {
+                    receivedTargets.append(request.target)
                     request.complete(.ran(item, result: .completed))
                 }
             }
@@ -397,8 +429,9 @@ struct CommandPaletteControlRegistrationTests {
             AppDelegate.shared = previousAppDelegate
         }
 
-        let list = TerminalController.shared.controlCommandPaletteList(
-            routing: routing(windowID: windowID)
+        let list = await TerminalController.shared.controlCommandPaletteList(
+            routing: routing(windowID: windowID),
+            deadline: nil
         )
         guard case .listed(let listedTarget, _) = list else {
             Issue.record("Expected palette target identity")
@@ -407,15 +440,17 @@ struct CommandPaletteControlRegistrationTests {
         #expect(listedTarget == ControlCommandPaletteTarget(
             windowID: windowID,
             workspaceID: listedWorkspace.id,
-            panelID: listedPanelID
+            panelID: listedPanelID,
+            configSnapshotID: configSnapshotID
         ))
 
         tabManager.selectedTabId = laterWorkspace.id
-        let run = TerminalController.shared.controlCommandPaletteRun(
+        let run = await TerminalController.shared.controlCommandPaletteRun(
             target: listedTarget,
             commandID: item.id,
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         )
 
         guard case .completed(let runWindowID, _) = run else {
@@ -426,13 +461,14 @@ struct CommandPaletteControlRegistrationTests {
         let expectedTarget = CommandPaletteActionTarget(
             windowID: windowID,
             workspaceID: listedWorkspace.id,
-            panelID: listedPanelID
+            panelID: listedPanelID,
+            configSnapshotID: configSnapshotID
         )
         #expect(receivedTargets == [expectedTarget, expectedTarget])
         #expect(tabManager.selectedWorkspace?.id == laterWorkspace.id)
     }
 
-    @Test func echoedIdentityDistinguishesADeletedPanelFromADeletedWindow() throws {
+    @Test func echoedIdentityDistinguishesADeletedPanelFromADeletedWindow() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -445,7 +481,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 handlerCalls += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -462,20 +498,22 @@ struct CommandPaletteControlRegistrationTests {
         )
 
         #expect(workspace.closePanel(originalPanelID, force: true))
-        #expect(TerminalController.shared.controlCommandPaletteRun(
+        #expect(await TerminalController.shared.controlCommandPaletteRun(
             target: target,
             commandID: "palette.fixture",
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         ) == .targetUnavailable)
         #expect(handlerCalls == 0)
 
         appDelegate.unregisterMainWindowContextForTesting(windowId: windowID)
-        #expect(TerminalController.shared.controlCommandPaletteRun(
+        #expect(await TerminalController.shared.controlCommandPaletteRun(
             target: target,
             commandID: "palette.fixture",
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         ) == .windowNotFound)
         #expect(handlerCalls == 0)
     }
@@ -505,7 +543,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(tabManager.selectedWorkspace?.id == selectedWorkspace.id)
     }
 
-    @Test func surfaceAndPaneSelectorsReachTheHandlerAsOneExactTarget() throws {
+    @Test func surfaceAndPaneSelectorsReachTheHandlerAsOneExactTarget() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -519,7 +557,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 receivedTargets.append(request.target)
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -530,11 +568,13 @@ struct CommandPaletteControlRegistrationTests {
             AppDelegate.shared = previousAppDelegate
         }
 
-        _ = TerminalController.shared.controlCommandPaletteList(
-            routing: routing(surfaceID: targetPanelID)
+        _ = await TerminalController.shared.controlCommandPaletteList(
+            routing: routing(surfaceID: targetPanelID),
+            deadline: nil
         )
-        _ = TerminalController.shared.controlCommandPaletteList(
-            routing: routing(paneID: targetPaneID)
+        _ = await TerminalController.shared.controlCommandPaletteList(
+            routing: routing(paneID: targetPaneID),
+            deadline: nil
         )
 
         let expectedTarget = CommandPaletteActionTarget(
@@ -545,8 +585,9 @@ struct CommandPaletteControlRegistrationTests {
         #expect(receivedTargets == [expectedTarget, expectedTarget])
         #expect(tabManager.selectedWorkspace?.id == selectedWorkspace.id)
         #expect(
-            TerminalController.shared.controlCommandPaletteList(
-                routing: routing(workspaceID: selectedWorkspace.id, surfaceID: targetPanelID)
+            await TerminalController.shared.controlCommandPaletteList(
+                routing: routing(workspaceID: selectedWorkspace.id, surfaceID: targetPanelID),
+                deadline: nil
             ) == .windowNotFound
         )
     }
@@ -652,7 +693,7 @@ struct CommandPaletteControlRegistrationTests {
         #expect(staleWindowContext.panel() == nil)
     }
 
-    @Test func windowDockWorkspaceRoutingUsesTheOwningWindowSelection() throws {
+    @Test func windowDockWorkspaceRoutingUsesTheOwningWindowSelection() async throws {
         let previousAppDelegate = AppDelegate.shared
         let previousActiveManager = TerminalController.shared.activeTabManagerForCallerNotification()
         let appDelegate = AppDelegate()
@@ -711,11 +752,12 @@ struct CommandPaletteControlRegistrationTests {
                 tabManager: targetManager
             )?.id == selectedTargetWorkspace.id
         )
-        let ownerRun = TerminalController.shared.controlCommandPaletteRun(
+        let ownerRun = await TerminalController.shared.controlCommandPaletteRun(
             routing: ownerRouting,
             commandID: item.id,
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         )
         guard case .completed(let ownerWindowID, _) = ownerRun else {
             Issue.record("Expected Dock owner routing to run in its owning window")
@@ -737,11 +779,12 @@ struct CommandPaletteControlRegistrationTests {
                 tabManager: callerManager
             ) == nil
         )
-        let surfaceRun = TerminalController.shared.controlCommandPaletteRun(
+        let surfaceRun = await TerminalController.shared.controlCommandPaletteRun(
             routing: surfaceRouting,
             commandID: item.id,
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         )
         guard case .completed(let surfaceWindowID, _) = surfaceRun else {
             Issue.record("Expected Dock surface routing to run in its owning window")
@@ -750,11 +793,12 @@ struct CommandPaletteControlRegistrationTests {
         #expect(surfaceWindowID == targetWindowID)
         #expect(handledWorkspaceIDs == [selectedTargetWorkspace.id, selectedTargetWorkspace.id])
         #expect(
-            TerminalController.shared.controlCommandPaletteRun(
+            await TerminalController.shared.controlCommandPaletteRun(
                 routing: routing(windowID: callerWindowID, surfaceID: targetDockSurfaceID),
                 commandID: item.id,
                 arguments: [:],
-                workingDirectory: nil
+                workingDirectory: nil,
+                deadline: nil
             ) == .windowNotFound
         )
 
@@ -769,11 +813,12 @@ struct CommandPaletteControlRegistrationTests {
                 tabManager: targetManager
             )?.id == firstTargetWorkspace.id
         )
-        let aliasRun = TerminalController.shared.controlCommandPaletteRun(
+        let aliasRun = await TerminalController.shared.controlCommandPaletteRun(
             routing: aliasRouting,
             commandID: item.id,
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         )
         guard case .completed(let aliasWindowID, _) = aliasRun else {
             Issue.record("Expected Dock alias routing to run in its owning window")
@@ -799,11 +844,12 @@ struct CommandPaletteControlRegistrationTests {
                 tabManager: callerManager
             ) == nil
         )
-        let paneRun = TerminalController.shared.controlCommandPaletteRun(
+        let paneRun = await TerminalController.shared.controlCommandPaletteRun(
             routing: paneRouting,
             commandID: item.id,
             arguments: [:],
-            workingDirectory: nil
+            workingDirectory: nil,
+            deadline: nil
         )
         guard case .completed(let paneWindowID, _) = paneRun else {
             Issue.record("Expected Dock pane routing to run in its owning window")
@@ -817,11 +863,12 @@ struct CommandPaletteControlRegistrationTests {
             firstTargetWorkspace.id,
         ])
         #expect(
-            TerminalController.shared.controlCommandPaletteRun(
+            await TerminalController.shared.controlCommandPaletteRun(
                 routing: routing(windowID: callerWindowID, paneID: targetDockPane.id),
                 commandID: item.id,
                 arguments: [:],
-                workingDirectory: nil
+                workingDirectory: nil,
+                deadline: nil
             ) == .windowNotFound
         )
 
@@ -833,11 +880,12 @@ struct CommandPaletteControlRegistrationTests {
             ) == nil
         )
         #expect(
-            TerminalController.shared.controlCommandPaletteRun(
+            await TerminalController.shared.controlCommandPaletteRun(
                 routing: unrelatedRouting,
                 commandID: item.id,
                 arguments: [:],
-                workingDirectory: nil
+                workingDirectory: nil,
+                deadline: nil
             ) == .windowNotFound
         )
         #expect(callerHandlerCalls == 0)
@@ -1926,6 +1974,66 @@ struct CommandPaletteTypedViewAndIdentifierOutcomeTests {
 
         #expect(!workspace.isPanelPinned(targetPanelID))
         #expect(workspace.reorderRemoteTmuxMirrorTabs(toPanelOrder: orderBefore))
+    }
+
+    @Test func terminalAttachmentHandlerReportsQueuedAndQueueFull() throws {
+        let fixture = try makeFixture()
+        defer { fixture.cleanup() }
+        let terminalPanel = try #require(
+            fixture.targetWorkspace.panels[fixture.targetPanelID] as? TerminalPanel
+        )
+        let emptyCatalog = CmuxConfigActionCatalog(
+            loadedCommands: [],
+            loadedActions: [],
+            commandSourcePaths: [:],
+            configurationIssues: [],
+            resolvedNewWorkspaceAction: nil,
+            resolvedNewWorkspaceCommand: nil,
+            configuredNewWorkspaceActionID: nil,
+            configuredNewWorkspaceActionSourcePath: nil,
+            configuredNewWorkspaceCommandName: nil,
+            configuredNewWorkspaceCommandSourcePath: nil
+        )
+        var registry = CommandPaletteHandlerRegistry()
+        fixture.contentView.registerCommandPaletteHandlers(
+            &registry,
+            context: fixture.context,
+            configCatalog: emptyCatalog
+        )
+        let handler = try #require(
+            registry.handler(for: "palette.terminalAttachTextBoxFile")
+        )
+
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-palette-attachment-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let firstURL = directoryURL.appendingPathComponent("first.txt")
+        #expect(FileManager.default.createFile(atPath: firstURL.path, contents: Data()))
+
+        #expect(handler(CmuxActionInvocation(
+            source: .automation,
+            arguments: ["path": firstURL.path]
+        )) == .queued)
+
+        let fillerURLs = (0..<(TerminalPanel.maximumPendingTextBoxAttachmentCount - 1)).map {
+            directoryURL.appendingPathComponent("filler-\($0).txt")
+        }
+        #expect(terminalPanel.attachFilesToTextBoxInput(fillerURLs) == .queued)
+        let overflowURL = directoryURL.appendingPathComponent("overflow.txt")
+        #expect(FileManager.default.createFile(atPath: overflowURL.path, contents: Data()))
+
+        guard case .failed(let code, _) = handler(CmuxActionInvocation(
+            source: .automation,
+            arguments: ["path": overflowURL.path]
+        )) else {
+            Issue.record("Expected the attachment handler to report a full queue")
+            return
+        }
+        #expect(code == "attachment_queue_full")
     }
 
     @Test func proPresentationOutcomesAreTyped() {
