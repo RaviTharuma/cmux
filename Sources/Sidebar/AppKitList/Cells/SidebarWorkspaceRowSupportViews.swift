@@ -532,14 +532,20 @@ final class SidebarRowChecklistSection: NSView {
             addField.font = .systemFont(ofSize: model.scaled(11))
             addField.placeholderString = String(localized: "sidebar.checklist.addItemPlaceholder", defaultValue: "New checklist item")
             addField.onCommit = { [weak self] text in
+                guard let self, self.isAdding else { return }
+                self.isAdding = false
+                self.addField.isHidden = true
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    self?.actions?.checklistAddItem(trimmed)
+                    self.actions?.checklistAddItem(trimmed)
                 }
-                self?.actions?.onConsumeChecklistAddFieldActivation()
+                self.actions?.onConsumeChecklistAddFieldActivation()
             }
             addField.onCancel = { [weak self] in
-                self?.actions?.onConsumeChecklistAddFieldActivation()
+                guard let self, self.isAdding else { return }
+                self.isAdding = false
+                self.addField.isHidden = true
+                self.actions?.onConsumeChecklistAddFieldActivation()
             }
             window?.makeFirstResponder(addField)
         }
