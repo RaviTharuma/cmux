@@ -60,7 +60,9 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             sidebarState: SidebarState(),
             sidebarSelectionState: SidebarSelectionState(),
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
 
         #expect(didPublishAfterHandler)
@@ -112,7 +114,7 @@ struct CommandPaletteControlRegistrationTests {
         let windowID = appDelegate.registerMainWindowContextForTesting(
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
-                request.complete(.listed([item]))
+                request.complete(.listed(target: request.target, commands: [item]))
             }
         )
         AppDelegate.shared = appDelegate
@@ -161,7 +163,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 handlerCalls += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -226,14 +228,14 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: managerA,
             commandPaletteControlHandler: { request in
                 handlerCallsA += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         let windowB = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerB,
             commandPaletteControlHandler: { request in
                 handlerCallsB += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -279,11 +281,15 @@ struct CommandPaletteControlRegistrationTests {
         let paneB = try #require(workspaceB.bonsplitController.allPaneIds.first).id
         let windowA = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerA,
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
         let windowB = appDelegate.registerMainWindowContextForTesting(
             tabManager: managerB,
-            commandPaletteControlHandler: { $0.complete(.listed([])) }
+            commandPaletteControlHandler: {
+                $0.complete(.listed(target: $0.target, commands: []))
+            }
         )
         AppDelegate.shared = appDelegate
         TerminalController.shared.setActiveTabManager(managerA)
@@ -329,7 +335,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 receivedTarget = request.target
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -378,13 +384,21 @@ struct CommandPaletteControlRegistrationTests {
             arguments: []
         )
         var receivedTargets: [CommandPaletteActionTarget] = []
+        let configSnapshotID = UUID()
         let windowID = appDelegate.registerMainWindowContextForTesting(
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
-                receivedTargets.append(request.target)
-                if receivedTargets.count == 1 {
-                    request.complete(.listed([item]))
+                if receivedTargets.isEmpty {
+                    let listedTarget = CommandPaletteActionTarget(
+                        windowID: request.target.windowID,
+                        workspaceID: request.target.workspaceID,
+                        panelID: request.target.panelID,
+                        configSnapshotID: configSnapshotID
+                    )
+                    receivedTargets.append(listedTarget)
+                    request.complete(.listed(target: listedTarget, commands: [item]))
                 } else {
+                    receivedTargets.append(request.target)
                     request.complete(.ran(item, result: .completed))
                 }
             }
@@ -407,7 +421,8 @@ struct CommandPaletteControlRegistrationTests {
         #expect(listedTarget == ControlCommandPaletteTarget(
             windowID: windowID,
             workspaceID: listedWorkspace.id,
-            panelID: listedPanelID
+            panelID: listedPanelID,
+            configSnapshotID: configSnapshotID
         ))
 
         tabManager.selectedTabId = laterWorkspace.id
@@ -426,7 +441,8 @@ struct CommandPaletteControlRegistrationTests {
         let expectedTarget = CommandPaletteActionTarget(
             windowID: windowID,
             workspaceID: listedWorkspace.id,
-            panelID: listedPanelID
+            panelID: listedPanelID,
+            configSnapshotID: configSnapshotID
         )
         #expect(receivedTargets == [expectedTarget, expectedTarget])
         #expect(tabManager.selectedWorkspace?.id == laterWorkspace.id)
@@ -445,7 +461,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 handlerCalls += 1
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -519,7 +535,7 @@ struct CommandPaletteControlRegistrationTests {
             tabManager: tabManager,
             commandPaletteControlHandler: { request in
                 receivedTargets.append(request.target)
-                request.complete(.listed([]))
+                request.complete(.listed(target: request.target, commands: []))
             }
         )
         AppDelegate.shared = appDelegate
@@ -1926,6 +1942,66 @@ struct CommandPaletteTypedViewAndIdentifierOutcomeTests {
 
         #expect(!workspace.isPanelPinned(targetPanelID))
         #expect(workspace.reorderRemoteTmuxMirrorTabs(toPanelOrder: orderBefore))
+    }
+
+    @Test func terminalAttachmentHandlerReportsQueuedAndQueueFull() throws {
+        let fixture = try makeFixture()
+        defer { fixture.cleanup() }
+        let terminalPanel = try #require(
+            fixture.targetWorkspace.panels[fixture.targetPanelID] as? TerminalPanel
+        )
+        let emptyCatalog = CmuxConfigActionCatalog(
+            loadedCommands: [],
+            loadedActions: [],
+            commandSourcePaths: [:],
+            configurationIssues: [],
+            resolvedNewWorkspaceAction: nil,
+            resolvedNewWorkspaceCommand: nil,
+            configuredNewWorkspaceActionID: nil,
+            configuredNewWorkspaceActionSourcePath: nil,
+            configuredNewWorkspaceCommandName: nil,
+            configuredNewWorkspaceCommandSourcePath: nil
+        )
+        var registry = CommandPaletteHandlerRegistry()
+        fixture.contentView.registerCommandPaletteHandlers(
+            &registry,
+            context: fixture.context,
+            configCatalog: emptyCatalog
+        )
+        let handler = try #require(
+            registry.handler(for: "palette.terminalAttachTextBoxFile")
+        )
+
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-palette-attachment-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let firstURL = directoryURL.appendingPathComponent("first.txt")
+        #expect(FileManager.default.createFile(atPath: firstURL.path, contents: Data()))
+
+        #expect(handler(CmuxActionInvocation(
+            source: .automation,
+            arguments: ["path": firstURL.path]
+        )) == .queued)
+
+        let fillerURLs = (0..<(TerminalPanel.maximumPendingTextBoxAttachmentCount - 1)).map {
+            directoryURL.appendingPathComponent("filler-\($0).txt")
+        }
+        #expect(terminalPanel.attachFilesToTextBoxInput(fillerURLs) == .queued)
+        let overflowURL = directoryURL.appendingPathComponent("overflow.txt")
+        #expect(FileManager.default.createFile(atPath: overflowURL.path, contents: Data()))
+
+        guard case .failed(let code, _) = handler(CmuxActionInvocation(
+            source: .automation,
+            arguments: ["path": overflowURL.path]
+        )) else {
+            Issue.record("Expected the attachment handler to report a full queue")
+            return
+        }
+        #expect(code == "attachment_queue_full")
     }
 
     @Test func proPresentationOutcomesAreTyped() {

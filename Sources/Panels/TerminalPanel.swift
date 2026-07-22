@@ -35,6 +35,10 @@ enum AgentHibernationResumePreparation: Equatable {
 /// This allows TerminalSurface to be used within the bonsplit-based layout system.
 @MainActor
 final class TerminalPanel: Panel, ObservableObject {
+    /// Bounds files retained while SwiftUI has not mounted the text-box view.
+    /// Duplicate standardized URLs share one queue entry.
+    static let maximumPendingTextBoxAttachmentCount = 64
+
     enum TextBoxInputRequestResult: Equatable {
         case focused
         case queued
@@ -44,6 +48,14 @@ final class TerminalPanel: Panel, ObservableObject {
         var accepted: Bool {
             self != .failed
         }
+    }
+
+    enum TextBoxAttachmentRequestResult: Equatable {
+        case completed
+        case queued
+        case queueFull
+        case invalidFiles
+        case insertionFailed
     }
 
     private enum TextBoxInputFocusIntent: Equatable {
@@ -383,25 +395,48 @@ final class TerminalPanel: Panel, ObservableObject {
     /// Attaches caller-supplied files without presenting an open panel. If the
     /// text box has not mounted yet, registration flushes the immutable URLs.
     @discardableResult
-    func attachFilesToTextBoxInput(_ fileURLs: [URL]) -> Bool {
+    func attachFilesToTextBoxInput(_ fileURLs: [URL]) -> TextBoxAttachmentRequestResult {
         let standardizedURLs = fileURLs
             .filter(\.isFileURL)
             .map(\.standardizedFileURL)
-        guard !standardizedURLs.isEmpty else { return false }
+        guard !standardizedURLs.isEmpty else { return .invalidFiles }
+        guard enqueuePendingTextBoxAttachments(standardizedURLs) else { return .queueFull }
 
         textBoxInputFocusIntent = .textBox
         isTextBoxActive = true
         shouldFocusTextBoxWhenAvailable = true
         shouldOpenTextBoxFilePickerWhenAvailable = false
         shouldHideTextBoxOnNextEscape = false
-        pendingTextBoxAttachmentURLs.append(contentsOf: standardizedURLs)
 
-        let hasMountedTextBox = textBoxInputView?.window != nil
-        let didFocusTextBox = focusTextBoxIfNeeded()
-        if let textBoxInputView, hasMountedTextBox {
+        _ = focusTextBoxIfNeeded()
+        if let textBoxInputView, textBoxInputView.window != nil {
             return flushPendingTextBoxAttachmentsIfPossible(in: textBoxInputView)
+                ? .completed
+                : .insertionFailed
         }
-        return didFocusTextBox || !hasMountedTextBox
+        return .queued
+    }
+
+    /// Adds a request atomically so a request that would cross the bound cannot
+    /// leave a partially queued set of files behind.
+    private func enqueuePendingTextBoxAttachments(_ standardizedURLs: [URL]) -> Bool {
+        var seenURLs = Set(pendingTextBoxAttachmentURLs)
+        var newURLs: [URL] = []
+        newURLs.reserveCapacity(min(
+            standardizedURLs.count,
+            max(0, Self.maximumPendingTextBoxAttachmentCount - pendingTextBoxAttachmentURLs.count)
+        ))
+
+        for url in standardizedURLs where seenURLs.insert(url).inserted {
+            guard pendingTextBoxAttachmentURLs.count + newURLs.count
+                    < Self.maximumPendingTextBoxAttachmentCount else {
+                return false
+            }
+            newURLs.append(url)
+        }
+
+        pendingTextBoxAttachmentURLs.append(contentsOf: newURLs)
+        return true
     }
 
     @discardableResult
@@ -414,8 +449,9 @@ final class TerminalPanel: Panel, ObservableObject {
             return false
         }
         let fileURLs = pendingTextBoxAttachmentURLs
-        pendingTextBoxAttachmentURLs.removeAll(keepingCapacity: true)
-        return view.onInsertFileURLs(fileURLs, view)
+        guard view.onInsertFileURLs(fileURLs, view) else { return false }
+        pendingTextBoxAttachmentURLs.removeAll(keepingCapacity: false)
+        return true
     }
 
     func textBoxDidBecomeFocused() {
@@ -516,6 +552,7 @@ final class TerminalPanel: Panel, ObservableObject {
         }
         restoredTextBoxDraft = nil
         preservedTextBoxAttributedContent = nil
+        pendingTextBoxAttachmentURLs.removeAll(keepingCapacity: false)
         textBoxContent = ""
         textBoxAttachments = []
         isTextBoxActive = false

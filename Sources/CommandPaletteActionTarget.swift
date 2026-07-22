@@ -9,11 +9,19 @@ struct CommandPaletteActionTarget: Sendable, Equatable {
     let windowID: UUID
     let workspaceID: UUID?
     let panelID: UUID?
+    /// The config catalog version used when this target was enumerated.
+    let configSnapshotID: UUID?
 
-    init(windowID: UUID, workspaceID: UUID?, panelID: UUID?) {
+    init(
+        windowID: UUID,
+        workspaceID: UUID?,
+        panelID: UUID?,
+        configSnapshotID: UUID? = nil
+    ) {
         self.windowID = windowID
         self.workspaceID = workspaceID
         self.panelID = panelID
+        self.configSnapshotID = configSnapshotID
     }
 }
 

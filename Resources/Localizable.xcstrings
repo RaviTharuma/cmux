@@ -222,6 +222,23 @@
         }
       }
     },
+    "action.error.terminalAttachmentQueueFull": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The terminal text-box attachment queue is full."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターミナルのテキストボックスの添付キューがいっぱいです。"
+          }
+        }
+      }
+    },
     "action.error.terminalInputRejected": {
       "extractionState": "manual",
       "localizations": {
@@ -45203,13 +45220,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usage: cmux palette [list] [--window <id|ref|index>]\n       cmux palette run <action-id> [--arg <name=value> ...] [--window <id|ref|index>]\n       cmux palette run <action-id> --target '<target-json>'\n       cmux palette <action-id> [--arg <name=value> ...]   (shorthand for 'run')\n\nList or invoke the exact actions available through Cmd+Shift+P in\nthe target window's current context. Action IDs and argument names\nare strings declared by the live action registry, including custom\nactions loaded from cmux.json. Echo the target object from JSON list\noutput into --target to preserve its exact window, workspace, and pane.\n\nExamples:\n  cmux palette list\n  cmux palette run palette.newTerminalTab\n  cmux palette run palette.renameWorkspace --arg name=api\n  cmux palette run palette.renameWorkspace --arg name=api --target '{\"window_id\":\"...\",\"workspace_id\":\"...\",\"panel_id\":\"...\"}'\n  cmux palette palette.terminalOpenDirectory.vscodeInline"
+            "value": "Usage: cmux palette [list] [--window <id|ref|index>]\n       cmux palette run <action-id> [--arg <name=value> ...] [--window <id|ref|index>]\n       cmux palette run <action-id> --target '<target-json>'\n       cmux palette <action-id> [--arg <name=value> ...]   (shorthand for 'run')\n\nList or invoke the exact actions available through Cmd+Shift+P in\nthe target window's current context. Action IDs and argument names\nare strings declared by the live action registry, including custom\nactions loaded from cmux.json. Echo the target object from JSON list\noutput into --target to preserve its exact window, workspace, pane,\nand config snapshot.\n\nExamples:\n  cmux palette list\n  cmux palette run palette.newTerminalTab\n  cmux palette run palette.renameWorkspace --arg name=api\n  cmux palette run palette.renameWorkspace --arg name=api --target '{\"window_id\":\"...\",\"workspace_id\":\"...\",\"panel_id\":\"...\",\"config_snapshot_id\":\"...\"}'\n  cmux palette palette.terminalOpenDirectory.vscodeInline"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用法: cmux palette [list] [--window <id|ref|index>]\n       cmux palette run <action-id> [--arg <name=value> ...] [--window <id|ref|index>]\n       cmux palette run <action-id> --target '<target-json>'\n       cmux palette <action-id> [--arg <name=value> ...]   ('run' の省略形)\n\n対象ウィンドウの現在のコンテキストで Cmd+Shift+P に表示される\nアクションを一覧表示または実行します。アクション ID と引数名は、\ncmux.json から読み込まれるカスタムアクションを含め、実行中の\nアクションレジストリで文字列として宣言されます。JSON の一覧出力に\n含まれる target を --target に渡すと、ウィンドウ、ワークスペース、\nペインを正確に維持できます。\n\n例:\n  cmux palette list\n  cmux palette run palette.newTerminalTab\n  cmux palette run palette.renameWorkspace --arg name=api\n  cmux palette run palette.renameWorkspace --arg name=api --target '{\"window_id\":\"...\",\"workspace_id\":\"...\",\"panel_id\":\"...\"}'\n  cmux palette palette.terminalOpenDirectory.vscodeInline"
+            "value": "使用法: cmux palette [list] [--window <id|ref|index>]\n       cmux palette run <action-id> [--arg <name=value> ...] [--window <id|ref|index>]\n       cmux palette run <action-id> --target '<target-json>'\n       cmux palette <action-id> [--arg <name=value> ...]   ('run' の省略形)\n\n対象ウィンドウの現在のコンテキストで Cmd+Shift+P に表示される\nアクションを一覧表示または実行します。アクション ID と引数名は、\ncmux.json から読み込まれるカスタムアクションを含め、実行中の\nアクションレジストリで文字列として宣言されます。JSON の一覧出力に\n含まれる target を --target に渡すと、ウィンドウ、ワークスペース、\nペイン、設定スナップショットを正確に維持できます。\n\n例:\n  cmux palette list\n  cmux palette run palette.newTerminalTab\n  cmux palette run palette.renameWorkspace --arg name=api\n  cmux palette run palette.renameWorkspace --arg name=api --target '{\"window_id\":\"...\",\"workspace_id\":\"...\",\"panel_id\":\"...\",\"config_snapshot_id\":\"...\"}'\n  cmux palette palette.terminalOpenDirectory.vscodeInline"
           }
         }
       }
@@ -212072,6 +212089,57 @@
         }
       }
     },
+    "socket.palette.error.configurationChanged": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command palette configuration changed; run palette list again."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドパレットの設定が変更されました。palette list を再実行してください。"
+          }
+        }
+      }
+    },
+    "socket.palette.error.configurationPending": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The command palette configuration is still loading; retry the command."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドパレットの設定を読み込み中です。コマンドを再試行してください。"
+          }
+        }
+      }
+    },
+    "socket.palette.error.configurationTimeout": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command palette configuration timed out."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドパレットの設定の読み込みがタイムアウトしました。"
+          }
+        }
+      }
+    },
     "socket.palette.error.invalidArgumentValues": {
       "extractionState": "manual",
       "localizations": {
@@ -212085,6 +212153,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "アクション引数の値が無効です: %@"
+          }
+        }
+      }
+    },
+    "socket.palette.error.internal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command palette request could not be handled."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コマンドパレットのリクエストを処理できませんでした。"
           }
         }
       }
