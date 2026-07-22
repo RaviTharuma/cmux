@@ -694,13 +694,16 @@ final class CmuxConfigDecodingTests: XCTestCase {
         let store = CmuxConfigStore(globalConfigPath: configURL.path)
         store.loadAll()
         XCTAssertNotNil(store.resolvedAction(id: "first"))
-        XCTAssertNil(store.resolvedAction(id: "second"))
+        XCTAssertNil(store.resolvedAction(id: "other"))
+        let originalModificationDate = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: configURL.path)[.modificationDate] as? Date
+        )
 
         let didAutoReload = expectation(description: "cmux.json should not hot reload")
         didAutoReload.isInverted = true
         var cancellable: AnyCancellable?
         cancellable = store.$loadedActions.dropFirst().sink { actions in
-            if actions.contains(where: { $0.id == "second" }) {
+            if actions.contains(where: { $0.id == "other" }) {
                 didAutoReload.fulfill()
             }
         }
@@ -708,18 +711,22 @@ final class CmuxConfigDecodingTests: XCTestCase {
         try """
         {
           "actions": {
-            "second": { "type": "command", "command": "echo second" }
+            "other": { "type": "command", "command": "echo other" }
           }
         }
         """.write(to: configURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: originalModificationDate],
+            ofItemAtPath: configURL.path
+        )
 
         await fulfillment(of: [didAutoReload], timeout: 0.25)
         XCTAssertNotNil(store.resolvedAction(id: "first"))
-        XCTAssertNil(store.resolvedAction(id: "second"))
+        XCTAssertNil(store.resolvedAction(id: "other"))
 
         store.loadAll()
         XCTAssertNil(store.resolvedAction(id: "first"))
-        XCTAssertNotNil(store.resolvedAction(id: "second"))
+        XCTAssertNotNil(store.resolvedAction(id: "other"))
         cancellable?.cancel()
     }
 
@@ -1141,7 +1148,7 @@ final class CmuxConfigDecodingTests: XCTestCase {
     }
 
     @MainActor
-    func testActionCatalogResolvesPerDirectoryWithoutMutatingPublishedStore() throws {
+    func testActionCatalogResolvesPerDirectoryWithoutMutatingPublishedStore() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "cmux-config-store-\(UUID().uuidString)",
             isDirectory: true
@@ -1208,8 +1215,8 @@ final class CmuxConfigDecodingTests: XCTestCase {
         let ambientSourcePaths = store.commandSourcePaths
         let ambientIssues = store.configurationIssues
 
-        let catalogA = store.actionCatalog(startingFrom: projectA.path)
-        let catalogB = store.actionCatalog(startingFrom: projectB.path)
+        let catalogA = await store.refreshActionCatalog(startingFrom: projectA.path)
+        let catalogB = await store.refreshActionCatalog(startingFrom: projectB.path)
 
         XCTAssertEqual(catalogA.resolvedAction(id: "project.action")?.workspaceCommandName, "Project A")
         XCTAssertEqual(catalogB.resolvedAction(id: "project.action")?.workspaceCommandName, "Project B")
@@ -1222,6 +1229,21 @@ final class CmuxConfigDecodingTests: XCTestCase {
         XCTAssertEqual(catalogA.loadedCommands.map(\.name), ["Project A"])
         XCTAssertEqual(catalogB.loadedCommands.map(\.name), ["Project B"])
 
+        let unchangedSnapshotA = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectA.path,
+            revalidate: false
+        ))
+        let unchangedRevision = store.actionCatalogRevision
+        _ = await store.refreshActionCatalog(startingFrom: projectA.path)
+        XCTAssertEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectA.path,
+                revalidate: false
+            )?.id,
+            unchangedSnapshotA.id
+        )
+        XCTAssertEqual(store.actionCatalogRevision, unchangedRevision)
+
         XCTAssertEqual(store.localConfigPath, ambientLocalPath)
         XCTAssertEqual(store.configRevision, ambientRevision)
         XCTAssertEqual(store.loadedActions, ambientActions)
@@ -1231,6 +1253,81 @@ final class CmuxConfigDecodingTests: XCTestCase {
         )
         XCTAssertEqual(store.commandSourcePaths, ambientSourcePaths)
         XCTAssertEqual(store.configurationIssues, ambientIssues)
+
+        let snapshotBBeforeEdit = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            revalidate: false
+        ))
+
+        try """
+        {
+          "actions": {
+            "project.action": { "type": "workspaceCommand", "commandName": "Project C" },
+            "cmux.newTerminal": { "title": "Terminal C" }
+          },
+          "commands": [{
+            "name": "Project C",
+            "workspace": { "name": "C" }
+          }]
+        }
+        """.write(to: configB, atomically: true, encoding: .utf8)
+        let staleCatalogB = try XCTUnwrap(
+            store.cachedActionCatalog(startingFrom: projectB.path)
+        )
+        XCTAssertEqual(
+            staleCatalogB.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project B"
+        )
+
+        var revalidatedCatalogB: CmuxConfigActionCatalog?
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(10))
+            let candidate = store.cachedActionCatalog(
+                startingFrom: projectB.path,
+                revalidate: false
+            )
+            if candidate?.resolvedAction(id: "project.action")?.workspaceCommandName == "Project C" {
+                revalidatedCatalogB = candidate
+                break
+            }
+        }
+        XCTAssertEqual(
+            revalidatedCatalogB?.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project C"
+        )
+        let snapshotBAfterEdit = try XCTUnwrap(store.cachedActionCatalogSnapshot(
+            startingFrom: projectB.path,
+            revalidate: false
+        ))
+        XCTAssertNotEqual(snapshotBAfterEdit.id, snapshotBBeforeEdit.id)
+        let freshSnapshotB = try XCTUnwrap(await store.freshActionCatalogSnapshot(
+            startingFrom: projectB.path
+        ))
+        XCTAssertEqual(freshSnapshotB.id, snapshotBAfterEdit.id)
+        XCTAssertEqual(
+            freshSnapshotB.catalog.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project C"
+        )
+
+        try FileManager.default.removeItem(at: configB)
+        let cachedCatalogB = try XCTUnwrap(
+            store.cachedActionCatalog(startingFrom: projectB.path, revalidate: false)
+        )
+        XCTAssertEqual(
+            cachedCatalogB.resolvedAction(id: "project.action")?.workspaceCommandName,
+            "Project C"
+        )
+
+        let refreshedCatalogB = await store.refreshActionCatalog(startingFrom: projectB.path)
+        XCTAssertNil(refreshedCatalogB.resolvedAction(id: "project.action"))
+        XCTAssertNotNil(refreshedCatalogB.resolvedAction(id: "global.action"))
+        XCTAssertNotEqual(
+            store.cachedActionCatalogSnapshot(
+                startingFrom: projectB.path,
+                revalidate: false
+            )?.id,
+            snapshotBAfterEdit.id
+        )
     }
 
     @MainActor
