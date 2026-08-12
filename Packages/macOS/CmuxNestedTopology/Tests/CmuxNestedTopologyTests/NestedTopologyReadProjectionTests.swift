@@ -4,8 +4,9 @@ import Testing
 
 @Suite("NestedTopologyReadProjection")
 struct NestedTopologyReadProjectionTests {
-    @Test func publicCapabilityTokenIsStable() {
+    @Test func publicCapabilityTokensAreStable() {
         #expect(NestedTopologyPublicCapability.readV1.rawValue == "nested_topology.read.v1")
+        #expect(NestedTopologyPublicCapability.focusV1.rawValue == "nested_topology.focus.v1")
     }
 
     @Test func listProjectsCompoundIDsParentMapAndFocus() throws {
@@ -23,7 +24,7 @@ struct NestedTopologyReadProjectionTests {
         )
 
         let result = service.list(attachments: [attachment])
-        #expect(result.capabilities == [.readV1])
+        #expect(result.capabilities == [.focusV1, .readV1])
         #expect(result.attachments.count == 1)
 
         let projected = result.attachments[0]
@@ -203,7 +204,7 @@ struct NestedTopologyReadProjectionTests {
 
         #expect(object["encoding_version"] as? Int == 1)
         let capabilities = try #require(object["capabilities"] as? [String])
-        #expect(capabilities == ["nested_topology.read.v1"])
+        #expect(capabilities == ["nested_topology.focus.v1", "nested_topology.read.v1"])
 
         let attachments = try #require(object["attachments"] as? [[String: Any]])
         #expect(attachments.count == 1)

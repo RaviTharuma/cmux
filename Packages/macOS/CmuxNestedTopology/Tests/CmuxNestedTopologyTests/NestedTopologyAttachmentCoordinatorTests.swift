@@ -500,7 +500,7 @@ import Testing
             )
             Issue.record("expected cross-attachment resolve failure")
         } catch let error as NestedAttachmentError {
-            guard case .invalidState = error else {
+            guard case .providerInstanceMismatch = error else {
                 Issue.record("unexpected \(error)")
                 return
             }
@@ -620,7 +620,7 @@ import Testing
 
 // MARK: - Test helpers
 
-private final class MutexBox<Value>: @unchecked Sendable {
+final class MutexBox<Value>: @unchecked Sendable {
     private let queue = DispatchQueue(label: "cmux.nested.mutexbox")
     private var storage: Value
 
@@ -634,6 +634,11 @@ private final class MutexBox<Value>: @unchecked Sendable {
 
     func set(_ value: Value) {
         queue.sync { storage = value }
+    }
+
+    @discardableResult
+    func mutate<R>(_ body: (inout Value) -> R) -> R {
+        queue.sync { body(&storage) }
     }
 }
 
@@ -684,7 +689,7 @@ private actor AsyncGate {
     }
 }
 
-private struct SequencingClientFactory: NestedTopologyProviderClientFactory, Sendable {
+struct SequencingClientFactory: NestedTopologyProviderClientFactory, Sendable {
     let make: @Sendable (HerdrNestedTopologyClientConfiguration) -> any NestedTopologyProviderClient
 
     func makeHerdrClient(

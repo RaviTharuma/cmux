@@ -9,6 +9,8 @@ import SwiftUI
 struct NestedSidebarSubtreeView: View, Equatable {
     let snapshot: NestedSidebarSubtreeSnapshot
     let onToggleExpansion: () -> Void
+    /// Focus a nested row via the gated coordinator path (beta). Nil disables taps.
+    var onFocusNode: ((NestedNodeID) -> Void)? = nil
 
     static func == (lhs: NestedSidebarSubtreeView, rhs: NestedSidebarSubtreeView) -> Bool {
         lhs.snapshot == rhs.snapshot
@@ -40,7 +42,12 @@ struct NestedSidebarSubtreeView: View, Equatable {
 
             if snapshot.isExpanded {
                 ForEach(snapshot.roots, id: \.node.id) { row in
-                    NestedSidebarRowView(row: row, depth: 0)
+                    NestedSidebarRowView(
+                        row: row,
+                        depth: 0,
+                        isInteractive: snapshot.connectionState == .live && onFocusNode != nil,
+                        onFocusNode: onFocusNode
+                    )
                 }
             }
         }
@@ -75,35 +82,80 @@ struct NestedSidebarSubtreeView: View, Equatable {
 private struct NestedSidebarRowView: View {
     let row: NestedSidebarRowSnapshot
     let depth: Int
+    let isInteractive: Bool
+    let onFocusNode: ((NestedNodeID) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 6) {
-                Text(row.node.label.isEmpty ? row.node.id.rawID : row.node.label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(row.node.stale ? .secondary : .primary)
-                    .lineLimit(1)
-                if row.node.focused {
-                    Image(systemName: "circle.fill")
-                        .font(.system(size: 5))
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                }
-                if let status = row.node.agent?.status, row.node.id.kind == .agent || row.node.id.kind == .pane {
-                    Text(status.rawValue)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, CGFloat(12 + depth * 10))
-            .accessibilityLabel(Text(row.accessibilityLabel))
-            .accessibilityAddTraits(row.node.focused ? .isSelected : [])
+            rowLabel
+                .padding(.leading, CGFloat(12 + depth * 10))
+                .accessibilityLabel(Text(row.accessibilityLabel))
+                .accessibilityAddTraits(rowAccessibilityTraits)
+                .accessibilityIdentifier("NestedTopologyRow.\(row.node.id.rawID)")
 
             ForEach(row.children, id: \.node.id) { child in
-                NestedSidebarRowView(row: child, depth: depth + 1)
+                NestedSidebarRowView(
+                    row: child,
+                    depth: depth + 1,
+                    isInteractive: isInteractive,
+                    onFocusNode: onFocusNode
+                )
             }
         }
+    }
+
+    @ViewBuilder
+    private var rowLabel: some View {
+        let content = HStack(spacing: 6) {
+            Text(row.node.label.isEmpty ? row.node.id.rawID : row.node.label)
+                .font(.system(size: 11))
+                .foregroundStyle(row.node.stale ? .secondary : .primary)
+                .lineLimit(1)
+            if row.node.focused {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 5))
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            }
+            if let status = row.node.agent?.status, row.node.id.kind == .agent || row.node.id.kind == .pane {
+                Text(status.rawValue)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+
+        if isInteractive, let onFocusNode {
+            Button {
+                onFocusNode(row.node.id)
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+            .disabled(row.node.stale)
+            .accessibilityHint(Text(focusHint))
+        } else {
+            content
+        }
+    }
+
+    private var rowAccessibilityTraits: AccessibilityTraits {
+        var traits: AccessibilityTraits = []
+        if row.node.focused {
+            traits.insert(.isSelected)
+        }
+        if isInteractive {
+            traits.insert(.isButton)
+        }
+        return traits
+    }
+
+    private var focusHint: String {
+        String(
+            localized: "sidebar.nestedTopology.focusHint",
+            defaultValue: "Focus nested node"
+        )
     }
 }
 
@@ -112,12 +164,14 @@ struct NestedSidebarSubtreeHost: View {
     let hostStableSurfaceID: UUID
     let snapshot: NestedSidebarSubtreeSnapshot?
     let onToggleExpansion: () -> Void
+    var onFocusNode: ((NestedNodeID) -> Void)? = nil
 
     var body: some View {
         if NestedTopologyController.isEnabled, let snapshot {
             NestedSidebarSubtreeView(
                 snapshot: snapshot,
-                onToggleExpansion: onToggleExpansion
+                onToggleExpansion: onToggleExpansion,
+                onFocusNode: onFocusNode
             )
             .equatable()
             .accessibilityIdentifier("NestedTopologySubtree.\(hostStableSurfaceID.uuidString)")

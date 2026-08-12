@@ -34288,13 +34288,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hides nested topology reads and sidebar subtrees until you enable them here."
+            "value": "Hides nested topology reads, focus, and sidebar subtrees until you enable them here."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここで有効化するまで、ネストトポロジの読み取りとサイドバーのサブツリーを非表示にします。"
+            "value": "ここで有効化するまで、ネストトポロジの読み取り・フォーカス・サイドバーのサブツリーを非表示にします。"
           }
         }
       }
@@ -34305,13 +34305,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Shows Herdr nested workspaces/tabs/panes/agents as virtual descendants under the host terminal surface. Read-only; does not create cmux panes."
+            "value": "Shows Herdr nested workspaces/tabs/panes/agents as virtual descendants under the host terminal surface. Supports capability-gated focus; does not create cmux panes."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ホスト端末サーフェス配下に Herdr のネストされたワークスペース/タブ/ペイン/エージェントを仮想子孫として表示します。読み取り専用で、cmux ペインは作成しません。"
+            "value": "ホスト端末サーフェス配下に Herdr のネストされたワークスペース/タブ/ペイン/エージェントを仮想子孫として表示します。ケイパビリティで制御されたフォーカスに対応し、cmux ペインは作成しません。"
           }
         }
       }
@@ -242552,6 +242552,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "到達可能"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.invalidNodeID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing or invalid node_id"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "node_id が欠落しているか無効です"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.invalidAttachmentID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing or invalid expected_attachment_id"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expected_attachment_id が欠落しているか無効です"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.invalidProviderInstanceID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing or invalid expected_provider_instance_id"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expected_provider_instance_id が欠落しているか無効です"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.focusFailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nested focus failed"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネストフォーカスに失敗しました"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.focusHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus nested node"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネストノードにフォーカス"
           }
         }
       }

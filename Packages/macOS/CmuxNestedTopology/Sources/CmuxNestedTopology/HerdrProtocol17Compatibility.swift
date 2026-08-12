@@ -17,10 +17,15 @@ public struct HerdrProtocol17Compatibility: Sendable {
     public static let supportedProtocolNumber = 17
 
     /// Semantic capabilities advertised for a validated protocol-17 server.
+    ///
+    /// Protocol 17 exposes typed `*.focus` methods (`workspace.focus`,
+    /// `tab.focus`, `pane.focus`, `agent.focus`), so ``topologyFocusV1`` is
+    /// included. Rename / input / split remain deferred until later PRs.
     public static let readCapabilities = NestedCapabilitySet(
         capabilities: [
             .topologySnapshotV1,
             .topologyEventsV1,
+            .topologyFocusV1,
         ]
     )
 
@@ -996,9 +1001,13 @@ extension HerdrWireResult: Decodable {
             self = .sessionSnapshot(snapshot)
         case "subscription_started":
             self = .subscriptionStarted
+        case "ok", "workspace_info", "tab_info", "pane_info", "agent_info":
+            // Focus / mutation success shapes. Payload fields are ignored by the
+            // topology client — callers reconcile from events / resnapshot.
+            self = .other(type: type, object: [:])
         default:
-            let object = try decoder.singleValueContainer().decode([String: AnySendableJSON].self)
-            self = .other(type: type, object: object)
+            // Tolerate other additive success types without requiring a full schema.
+            self = .other(type: type, object: [:])
         }
     }
 }

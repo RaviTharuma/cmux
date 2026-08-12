@@ -277,6 +277,10 @@ enum HerdrFakeFixtures {
         #"{"id":"\#(id)","error":{"code":"\#(code)","message":"\#(message)"}}"#
     }
 
+    static func focusOKJSON(id: String, type: String = "ok") -> String {
+        #"{"id":"\#(id)","result":{"type":"\#(type)"}}"#
+    }
+
     static func workspaceCreatedEventJSON() -> String {
         #"{"event":"workspace_created","data":{"type":"workspace_created","workspace":{"workspace_id":"w2","number":2,"label":"New","focused":false,"pane_count":0,"tab_count":0,"active_tab_id":"","agent_status":"unknown"}}}"#
     }
