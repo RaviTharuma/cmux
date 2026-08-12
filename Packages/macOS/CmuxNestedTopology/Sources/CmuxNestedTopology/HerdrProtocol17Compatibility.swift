@@ -57,7 +57,8 @@ public struct HerdrProtocol17Compatibility: Sendable {
     /// Validates a decoded `ping` / `pong` result and builds handshake metadata.
     public func makeHandshake(
         from pong: HerdrWirePong,
-        providerInstanceID: NestedProviderInstanceID
+        providerInstanceID: NestedProviderInstanceID,
+        instanceIdentityIsDurable: Bool
     ) throws -> NestedProviderHandshake {
         guard pong.protocolNumber == Self.supportedProtocolNumber else {
             throw NestedTopologyProviderError.unsupportedProtocol(pong.protocolNumber)
@@ -71,7 +72,8 @@ public struct HerdrProtocol17Compatibility: Sendable {
             providerInstanceID: providerInstanceID,
             version: version,
             protocolNumber: pong.protocolNumber,
-            capabilities: Self.readCapabilities
+            capabilities: Self.readCapabilities,
+            instanceIdentityIsDurable: instanceIdentityIsDurable
         )
     }
 

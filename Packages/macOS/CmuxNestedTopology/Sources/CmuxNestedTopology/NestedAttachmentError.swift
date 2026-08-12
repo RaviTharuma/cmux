@@ -30,6 +30,12 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
     case nodeNotFound(NestedNodeID)
     /// Target node / attachment is bound to a different host stable surface.
     case wrongHostSurface
+    /// Restore cannot auto-reattach; confirmation is required (identity proof / policy).
+    case restoreRequiresConfirmation(reason: String)
+    /// Restore observed a changed socket file identity at the persisted path.
+    case restoreSocketIdentityChanged
+    /// Restored provider endpoint is missing or unreachable.
+    case restoreProviderUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -61,6 +67,12 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "Nested topology node was not found on the live attachment."
         case .wrongHostSurface:
             return "Nested topology target is bound to a different host surface."
+        case .restoreRequiresConfirmation(let reason):
+            return "Nested provider restore requires confirmation (\(reason))."
+        case .restoreSocketIdentityChanged:
+            return "Nested provider socket identity changed; restore requires confirmation."
+        case .restoreProviderUnavailable:
+            return "Nested provider is unavailable for restore."
         }
     }
 
@@ -81,6 +93,9 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
         case .providerInstanceMismatch: return "provider_instance_mismatch"
         case .nodeNotFound: return "node_not_found"
         case .wrongHostSurface: return "wrong_host_surface"
+        case .restoreRequiresConfirmation(let reason): return "restore_requires_confirmation.\(reason)"
+        case .restoreSocketIdentityChanged: return "restore_socket_identity_changed"
+        case .restoreProviderUnavailable: return "restore_provider_unavailable"
         }
     }
 
@@ -102,7 +117,9 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
         case .providerFailed:
             return "provider_error"
         case .duplicateAttachment, .attachmentLimitExceeded, .endpointRejected,
-             .incompatibleProvider, .oversizedField:
+             .incompatibleProvider, .oversizedField,
+             .restoreRequiresConfirmation, .restoreSocketIdentityChanged,
+             .restoreProviderUnavailable:
             return "invalid_params"
         }
     }

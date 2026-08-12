@@ -1,8 +1,8 @@
 # CmuxNestedTopology
 
 Provider-neutral nested topology model, Herdr socket adapter, secure
-attachment lifecycle, read projection, and **capability-gated focus** for cmux
-(PR 1–5 of the native Herdr nested-topology plan).
+attachment lifecycle, read projection, capability-gated focus, and **session
+restore semantics** for cmux (PR 1–6 of the native Herdr nested-topology plan).
 
 ## Scope
 
@@ -16,8 +16,8 @@ This package owns:
 - provider-neutral ``NestedTopologyProviderClient`` (read + focus)
 - ``HerdrNestedTopologyClient`` (newline-delimited JSON Unix socket; no `herdr` CLI)
 - ``NestedTopologyAttachmentCoordinator`` — opt-in attachment lifecycle, endpoint
-  security validation, host move/close hooks, plugin single-writer handoff, and
-  capability-gated ``focusNode``
+  security validation, host move/close hooks, plugin single-writer handoff,
+  capability-gated ``focusNode``, and ``restoreFromIntent``
 - **PR4 read projection**
   - ``NestedTopologyTwoPassRenderer`` / ``NestedTopologyReadService``
   - public read nodes + ``nested.topology.list`` JSON payload helpers
@@ -28,11 +28,41 @@ This package owns:
   - Herdr `workspace.focus` / `tab.focus` / `pane.focus` / `agent.focus`
   - cmux→client capability token ``nested_topology.focus.v1``
   - control-socket method ``nested.node.focus``
+- **PR6 restore**
+  - versioned ``NestedAttachmentIntentDescriptor`` (intent only)
+  - revalidate + identity compare + fresh snapshot on restore
+  - disconnected + confirmation when identity proof is unavailable/mismatched
 
-It does **not** mutate cmux `Workspace` / Bonsplit state, persist restore
-descriptors (PR 6), or implement rename / send-input / split / close (separate
-follow-up PRs). Herdr descendants remain virtual under one host surface; they
-are never mirrored into Ghostty/Bonsplit PTYs.
+It does **not** mutate cmux `Workspace` / Bonsplit ownership of provider panes,
+persist nested node snapshots / output / credentials into session manifests, or
+implement rename / send-input / split / close (separate follow-up PRs). Herdr
+descendants remain virtual under one host surface; they are never mirrored into
+Ghostty/Bonsplit PTYs.
+
+## Restore semantics (PR 6)
+
+Persist **attachment intent**, never live topology:
+
+| Persisted | Not persisted |
+|---|---|
+| provider kind | nested node snapshot / tree |
+| reattach policy | pane/agent output |
+| non-secret endpoint locator (approved path) | tokens / bearer credentials |
+| last verified provider instance ID | plugin association state files/records |
+| last verified socket file identity | |
+
+On `Workspace.restoreSessionSnapshot` (app wiring):
+
+1. Wait until the terminal panel exists and stable surface identity is adopted.
+2. Call ``NestedTopologyAttachmentCoordinator/restoreFromIntent``.
+3. Re-run Unix-socket security checks and protocol compatibility.
+4. Compare durable provider instance identity (and socket file identity).
+5. Fetch a **fresh** `session.snapshot` — never rehydrate nodes from the manifest.
+6. If identity proof is unavailable/mismatched: leave ``disconnected`` with
+   ``pendingRestoreIntent`` and require ``confirmPendingRestore`` (explicit opt-in).
+
+Gated by beta flag `nestedTopology.beta.enabled`. Host surface close cancels
+in-flight restore without `server.stop` / child closes.
 
 ## Focus API (PR 5)
 
@@ -131,12 +161,12 @@ entries from prior generations on reconnect/resnapshot.
 swift test --package-path Packages/macOS/CmuxNestedTopology
 ```
 
-Adapter, attachment, read-projection, and focus tests use temporary Unix-socket
-fakes (or stubs) and do not require a live Herdr.
+Adapter, attachment, read-projection, focus, and restore tests use temporary
+Unix-socket fakes (or stubs) and do not require a live Herdr.
 
 ## Related
 
 - manaflow-ai/cmux#8737
 - cmux-herdr tracking: https://github.com/RaviTharuma/cmux-herdr/issues/11
-- Upstream PR plan PR 1–5: model, Herdr adapter, attachment lifecycle, read UI, focus
-- Upstream PR plan PR 6: restore semantics
+- Upstream PR plan PR 1–6: model → adapter → attachment → read UI → focus → restore
+- Native v1 complete per PARITY_MATRIX when restore revalidation lands (this PR)

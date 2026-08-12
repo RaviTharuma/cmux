@@ -12,6 +12,7 @@ actor StubNestedTopologyProviderClient: NestedTopologyProviderClient {
     private(set) var snapshotCount = 0
     private(set) var focusCount = 0
     private(set) var lastFocusedNodeID: NestedNodeID?
+    private var associations = NestedAssociationStore()
 
     init(
         handshake: @escaping @Sendable () async throws -> NestedProviderHandshake,
@@ -49,6 +50,15 @@ actor StubNestedTopologyProviderClient: NestedTopologyProviderClient {
         if let focusHandler {
             try await focusHandler(nodeID)
         }
+    }
+
+    /// In-memory association store — starts empty and is never rehydrated from session intents.
+    func associationStore() -> NestedAssociationStore {
+        associations
+    }
+
+    func setAssociationStore(_ store: NestedAssociationStore) {
+        associations = store
     }
 }
 
@@ -105,14 +115,16 @@ enum AttachmentTestFixtures {
 
     static func handshake(
         instance: String = "instance-a",
-        capabilities: NestedCapabilitySet = HerdrProtocol17Compatibility.readCapabilities
+        capabilities: NestedCapabilitySet = HerdrProtocol17Compatibility.readCapabilities,
+        instanceIdentityIsDurable: Bool = true
     ) -> NestedProviderHandshake {
         NestedProviderHandshake(
             providerKind: .herdr,
             providerInstanceID: NestedProviderInstanceID(rawValue: instance),
             version: "0.7.0",
             protocolNumber: 17,
-            capabilities: capabilities
+            capabilities: capabilities,
+            instanceIdentityIsDurable: instanceIdentityIsDurable
         )
     }
 
