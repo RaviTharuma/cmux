@@ -1,11 +1,12 @@
 import Foundation
 
-/// Read-only Herdr nested topology client over the local newline-delimited JSON Unix socket API.
+/// Herdr nested topology client over the local newline-delimited JSON Unix socket API.
 ///
 /// This client never shells out to the `herdr` CLI. It performs handshake (`ping`),
-/// `session.snapshot`, and `events.subscribe` only. Reconnects always assign a new
-/// provider instance generation (until Herdr returns a durable `instance_id`) and
-/// invalidate association entries from prior generations.
+/// `session.snapshot`, `events.subscribe`, and capability-gated `*.focus` RPCs.
+/// Reconnects always assign a new provider instance generation (until Herdr returns
+/// a durable `instance_id`) and invalidate association entries from prior generations.
+/// Unavailable methods fail closed — never synthesized via keystrokes or shell.
 public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     private let configuration: HerdrNestedTopologyClientConfiguration
     private let compatibility: HerdrProtocol17Compatibility
@@ -91,6 +92,53 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
                 task.cancel()
             }
         }
+    }
+
+    public func focus(nodeID: NestedNodeID) async throws {
+        let handshake = try await ensureHandshake()
+        guard handshake.capabilities.contains(.topologyFocusV1) else {
+            throw NestedTopologyProviderError.providerError(
+                code: "capability_absent",
+                message: NestedProviderCapability.topologyFocusV1.rawValue
+            )
+        }
+        guard nodeID.providerKind == .herdr else {
+            throw NestedTopologyProviderError.providerError(
+                code: "wrong_kind",
+                message: "focus requires herdr provider kind"
+            )
+        }
+        guard nodeID.providerInstanceID == handshake.providerInstanceID else {
+            throw NestedTopologyProviderError.providerError(
+                code: "stale_instance",
+                message: "node provider instance does not match live handshake"
+            )
+        }
+
+        let method: String
+        let params: [String: Any]
+        switch nodeID.kind {
+        case .workspace:
+            method = "workspace.focus"
+            params = ["workspace_id": nodeID.rawID]
+        case .tab:
+            method = "tab.focus"
+            params = ["tab_id": nodeID.rawID]
+        case .pane:
+            method = "pane.focus"
+            params = ["pane_id": nodeID.rawID]
+        case .agent:
+            // Herdr agents are addressed by pane id (`AgentTarget.target`).
+            method = "agent.focus"
+            params = ["target": nodeID.rawID]
+        }
+
+        let response = try await performRequest(method: method, params: params)
+        guard response.result != nil else {
+            throw NestedTopologyProviderError.missingRequiredField("result")
+        }
+        // Success shapes vary (`workspace_info`, `tab_info`, `pane_info`, …).
+        // Topology is reconciled from events / resnapshot — do not invent focus.
     }
 
     // MARK: - Event loop

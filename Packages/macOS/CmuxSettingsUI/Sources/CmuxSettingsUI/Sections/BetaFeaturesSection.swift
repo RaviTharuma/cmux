@@ -202,8 +202,8 @@ public struct BetaFeaturesSection: View {
             searchAnchorID: "setting:betaFeatures:nestedTopology",
             String(localized: "settings.betaFeatures.nestedTopology", defaultValue: "Nested Topology"),
             subtitle: nestedTopology.current
-                ? String(localized: "settings.betaFeatures.nestedTopology.subtitleOn", defaultValue: "Shows Herdr nested workspaces/tabs/panes/agents as virtual descendants under the host terminal surface. Read-only; does not create cmux panes.")
-                : String(localized: "settings.betaFeatures.nestedTopology.subtitleOff", defaultValue: "Hides nested topology reads and sidebar subtrees until you enable them here.")
+                ? String(localized: "settings.betaFeatures.nestedTopology.subtitleOn", defaultValue: "Shows Herdr nested workspaces/tabs/panes/agents as virtual descendants under the host terminal surface. Supports capability-gated focus; does not create cmux panes.")
+                : String(localized: "settings.betaFeatures.nestedTopology.subtitleOff", defaultValue: "Hides nested topology reads, focus, and sidebar subtrees until you enable them here.")
         ) {
             Toggle("", isOn: Binding(get: { nestedTopology.current }, set: { nestedTopology.set($0) }))
                 .labelsHidden()

@@ -274,11 +274,14 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "pane.surfaces",
         "system.identify",
         "system.tree",
-        // Nested topology read projection (PR4): hops to the attachment
-        // coordinator actor for a coalesced snapshot, then encodes on the
-        // worker. Not mainThreadCallable — the actor await must not run
-        // inline on the main actor via handleSocketLine.
+        // Nested topology read projection (PR4) and capability-gated focus
+        // (PR5): hop to the attachment coordinator actor / provider client on
+        // the worker. Not mainThreadCallable — the actor await and provider
+        // I/O must not run inline on the main actor via handleSocketLine.
+        // Nested focus is NOT focus-intent for cmux workspaces/surfaces; it
+        // only forwards a typed provider RPC for virtual descendants.
         "nested.topology.list",
+        "nested.node.focus",
         // The v2 send lane (tranche E of issue #5757): text/key parsing and
         // reply shaping run on the worker; the narrow hop resolves the target,
         // injects the input on main (Ghostty surface input is main-bound

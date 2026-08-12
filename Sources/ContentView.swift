@@ -14750,6 +14750,12 @@ struct VerticalTabsSidebar: View, Equatable {
             nestedSubtrees: nestedSubtrees,
             onToggleNestedExpansion: { hostSurfaceID in
                 nestedController?.toggleExpanded(hostStableSurfaceID: hostSurfaceID)
+            },
+            onFocusNestedNode: { hostSurfaceID, nodeID in
+                nestedController?.focusSidebarNode(
+                    hostStableSurfaceID: hostSurfaceID,
+                    nodeID: nodeID
+                )
             }
         )
     }

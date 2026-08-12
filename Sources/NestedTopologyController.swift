@@ -4,7 +4,8 @@ import CmuxSettings
 import OSLog
 import Observation
 
-/// App-scoped host for nested topology attachment + read projection (PR4).
+/// App-scoped host for nested topology attachment, read projection, and
+/// capability-gated focus (PR4/PR5).
 ///
 /// Owns the ``NestedTopologyAttachmentCoordinator`` (actor) and a MainActor
 /// read cache used by the sidebar. Provider descendants remain virtual under a
@@ -108,6 +109,38 @@ final class NestedTopologyController {
             )
         } else {
             scheduleSidebarRefresh()
+        }
+    }
+
+    /// Focuses a nested node via the capability-gated coordinator path.
+    ///
+    /// Used by sidebar row selection and `nested.node.focus`. Does not mutate
+    /// Bonsplit / Ghostty state; topology updates come from provider events.
+    @discardableResult
+    func focusNode(_ request: NestedNodeFocusRequest) async throws -> NestedNodeFocusResult {
+        let result = try await coordinator.focusNode(request)
+        scheduleSidebarRefresh()
+        return result
+    }
+
+    /// Sidebar convenience: focus a node under a known host surface (user confirmed).
+    func focusSidebarNode(hostStableSurfaceID: UUID, nodeID: NestedNodeID) {
+        guard Self.isEnabled else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.focusNode(
+                    NestedNodeFocusRequest(
+                        hostStableSurfaceID: hostStableSurfaceID,
+                        nodeID: nodeID,
+                        expectedAttachmentID: self.sidebarSubtreesByHostSurfaceID[hostStableSurfaceID]?.attachmentID,
+                        expectedProviderInstanceID: nodeID.providerInstanceID,
+                        authorization: .userConfirmed
+                    )
+                )
+            } catch {
+                Self.logger.error("nested focus failed: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 

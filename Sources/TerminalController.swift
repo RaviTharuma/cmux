@@ -1475,6 +1475,8 @@ class TerminalController {
             return v2RemoteTmuxPaneSurfaces(id: request.id, params: request.params)
         case "nested.topology.list":
             return v2NestedTopologyList(id: request.id, params: request.params)
+        case "nested.node.focus":
+            return v2NestedNodeFocus(id: request.id, params: request.params)
 #if DEBUG
         case "remote.tmux.test_exec": return v2RemoteTmuxTestExec(id: request.id, params: request.params)
         case "remote.tmux.test_set_frame": return v2RemoteTmuxTestSetFrame(id: request.id, params: request.params)
@@ -2730,6 +2732,7 @@ class TerminalController {
             "workspace.remote.terminal_session_connected", "workspace.remote.terminal_session_end",
             "remote.tmux.sessions", "remote.tmux.attach", "remote.tmux.detach", "remote.tmux.state", "remote.tmux.mirror", "remote.tmux.window", "remote.tmux.pane_grids", "remote.tmux.pane_surfaces",
             "nested.topology.list",
+            "nested.node.focus",
             "session.restore_previous",
             "settings.open",
             "feedback.open",
@@ -2896,9 +2899,10 @@ class TerminalController {
             "access_mode": socketServer.accessMode.rawValue,
             "methods": methods.sorted(),
             // Keep mobile host capabilities and add nested-topology semantics
-            // (PR4). Existing clients that only read `methods` remain compatible.
+            // (PR4/PR5). Existing clients that only read `methods` remain compatible.
             "capabilities": MobileHostService.mobileHostCapabilities + [
                 NestedTopologyPublicCapability.readV1.rawValue,
+                NestedTopologyPublicCapability.focusV1.rawValue,
             ],
         ]
     }
