@@ -1,8 +1,8 @@
 # CmuxNestedTopology
 
-Provider-neutral nested topology model, read-only Herdr socket adapter, and
-secure attachment lifecycle for cmux (PR 1–3 of the native Herdr nested-topology
-plan).
+Provider-neutral nested topology model, read-only Herdr socket adapter, secure
+attachment lifecycle, and **read projection** for cmux (PR 1–4 of the native
+Herdr nested-topology plan).
 
 ## Scope
 
@@ -17,10 +17,42 @@ This package owns:
 - ``HerdrNestedTopologyClient`` (newline-delimited JSON Unix socket; no `herdr` CLI)
 - ``NestedTopologyAttachmentCoordinator`` — opt-in attachment lifecycle, endpoint
   security validation, host move/close hooks, and plugin single-writer handoff
+- **PR4 read projection**
+  - ``NestedTopologyTwoPassRenderer`` / ``NestedTopologyReadService``
+  - public read nodes + ``nested.topology.list`` JSON payload helpers
+  - immutable ``NestedSidebarSubtreeSnapshot`` for sidebar mounting
+  - cmux→client capability token ``nested_topology.read.v1``
 
-It does **not** render UI, wire control-socket nested tree APIs (PR 4), or mutate
-cmux `Workspace` / Bonsplit state. Herdr descendants remain virtual under one host
-surface; they are never mirrored into Ghostty/Bonsplit PTYs.
+It does **not** mutate cmux `Workspace` / Bonsplit state, forward focus (PR 5),
+or persist restore descriptors (PR 6). Herdr descendants remain virtual under one
+host surface; they are never mirrored into Ghostty/Bonsplit PTYs.
+
+## Read API (PR 4)
+
+### Two-pass render
+
+1. **Parent map** — ``NestedParentMap.replace(with:)`` from the snapshot (never
+   re-inferred from titles each tick).
+2. **Title locks** — ``NestedAssociationStore.proposeTitle`` suppresses overwrite
+   when locked; the renderer diffs against last published labels so provider
+   echoes do not thrash UI/socket consumers.
+
+### Control socket (app-wired)
+
+- Semantic capability: `nested_topology.read.v1` (additive `capabilities` array
+  on `system.capabilities`)
+- Method: `nested.topology.list` (optional `host_surface_id` / `host_workspace_id`)
+- Default `system.tree` is unchanged (byte-compatible). Prefer
+  `nested.topology.list` over extending the default tree; package helper
+  ``NestedTopologyControlSocketPayload/foundationNestedTreeObject(attachments:)``
+  exists if `include_nested` is wired later.
+- Gated by beta flag `nestedTopology.beta.enabled` (same pattern as remote tmux)
+
+### Sidebar
+
+``NestedSidebarSubtreeSnapshot`` is an immutable value for expandable rows under
+the host workspace/surface. Mount via app ``NestedSidebarSubtreeView``; rows must
+not hold the attachment coordinator or other observable stores.
 
 ## Attachment lifecycle (PR 3)
 
@@ -55,13 +87,12 @@ entries from prior generations on reconnect/resnapshot.
 swift test --package-path Packages/macOS/CmuxNestedTopology
 ```
 
-Adapter and attachment tests use a temporary Unix-socket fake server (or stubs)
-and do not require a live Herdr.
+Adapter, attachment, and read-projection tests use temporary Unix-socket fakes
+(or stubs) and do not require a live Herdr.
 
 ## Related
 
 - manaflow-ai/cmux#8737
 - cmux-herdr tracking: https://github.com/RaviTharuma/cmux-herdr/issues/11
-- Upstream PR plan PR 1: provider-neutral model and IDs
-- Upstream PR plan PR 2: read-only Herdr socket adapter
-- Upstream PR plan PR 3: secure attachment lifecycle
+- Upstream PR plan PR 1–3: model, Herdr adapter, attachment lifecycle
+- Upstream PR plan PR 4: read UI + control-socket parity

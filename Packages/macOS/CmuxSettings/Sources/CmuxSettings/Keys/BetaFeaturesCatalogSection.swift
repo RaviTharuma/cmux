@@ -79,5 +79,15 @@ public struct BetaFeaturesCatalogSection: SettingCatalogSection {
         userDefaultsKey: "remoteTmux.beta.enabled"
     )
 
+    /// Nested topology (Herdr): read-only provider-owned virtual descendants
+    /// under a host terminal surface (sidebar subtree + `nested.topology.list`).
+    /// Defaults off; while off, nested read UI and socket methods return
+    /// disabled so existing workspace/surface selection is unaffected.
+    public let nestedTopology = DefaultsKey<Bool>(
+        id: "nestedTopology.beta.enabled",
+        defaultValue: false,
+        userDefaultsKey: "nestedTopology.beta.enabled"
+    )
+
     public init() {}
 }

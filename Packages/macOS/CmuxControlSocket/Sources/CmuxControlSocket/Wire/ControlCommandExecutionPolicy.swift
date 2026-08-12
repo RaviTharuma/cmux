@@ -274,6 +274,11 @@ public enum ControlCommandExecutionPolicy: Sendable, Equatable {
         "pane.surfaces",
         "system.identify",
         "system.tree",
+        // Nested topology read projection (PR4): hops to the attachment
+        // coordinator actor for a coalesced snapshot, then encodes on the
+        // worker. Not mainThreadCallable — the actor await must not run
+        // inline on the main actor via handleSocketLine.
+        "nested.topology.list",
         // The v2 send lane (tranche E of issue #5757): text/key parsing and
         // reply shaping run on the worker; the narrow hop resolves the target,
         // injects the input on main (Ghostty surface input is main-bound
