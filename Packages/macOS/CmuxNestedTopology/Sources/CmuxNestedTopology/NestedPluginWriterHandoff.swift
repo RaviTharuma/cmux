@@ -33,13 +33,14 @@ public struct NestedPluginWriterHandoff: Sendable {
     /// Lock file name suffix.
     public static let lockFileNameSuffix = ".lock"
 
+    /// Lock directory (Sendable value type). File I/O uses ``FileManager/default``
+    /// at call sites — `FileManager` itself is not `Sendable`, so it must not be
+    /// stored on this struct under Swift 6 concurrency checking.
     private let directoryURL: URL
-    private let fileManager: FileManager
 
     /// Creates a handoff manager writing locks under `directoryURL`.
-    public init(directoryURL: URL, fileManager: FileManager = .default) {
+    public init(directoryURL: URL) {
         self.directoryURL = directoryURL
-        self.fileManager = fileManager
     }
 
     /// Lock file URL for a host stable surface.
@@ -57,11 +58,12 @@ public struct NestedPluginWriterHandoff: Sendable {
 
     /// Whether a lock file currently exists for the host surface.
     public func isHeld(hostStableSurfaceID: UUID) -> Bool {
-        fileManager.fileExists(atPath: lockFileURL(for: hostStableSurfaceID).path)
+        FileManager.default.fileExists(atPath: lockFileURL(for: hostStableSurfaceID).path)
     }
 
     /// Acquires the handoff for a live attachment.
     public func acquire(hostStableSurfaceID: UUID, attachmentID: UUID) throws {
+        let fileManager = FileManager.default
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         let payload: [String: String] = [
             "attachment_id": attachmentID.uuidString.lowercased(),
@@ -81,6 +83,7 @@ public struct NestedPluginWriterHandoff: Sendable {
 
     /// Releases the handoff so plugin fallback may resume.
     public func release(hostStableSurfaceID: UUID) throws {
+        let fileManager = FileManager.default
         let url = lockFileURL(for: hostStableSurfaceID)
         if fileManager.fileExists(atPath: url.path) {
             try fileManager.removeItem(at: url)

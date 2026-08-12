@@ -19,7 +19,7 @@ public struct NestedTopologyReadListResult: Hashable, Codable, Sendable {
     /// Creates a list result.
     public init(
         encodingVersion: UInt8 = NestedTopologyReadListResult.currentEncodingVersion,
-        capabilities: [NestedTopologyPublicCapability] = [.readV1],
+        capabilities: [NestedTopologyPublicCapability] = [.readV1, .focusV1],
         attachments: [NestedTopologyReadAttachment]
     ) {
         self.encodingVersion = encodingVersion

@@ -6,9 +6,12 @@ actor StubNestedTopologyProviderClient: NestedTopologyProviderClient {
     private let handshakeHandler: @Sendable () async throws -> NestedProviderHandshake
     private let snapshotHandler: @Sendable () async throws -> NestedTopologySnapshot
     nonisolated private let eventsHandler: @Sendable () -> AsyncThrowingStream<NestedTopologyEvent, any Error>
+    private let focusHandler: (@Sendable (NestedNodeID) async throws -> Void)?
 
     private(set) var handshakeCount = 0
     private(set) var snapshotCount = 0
+    private(set) var focusCount = 0
+    private(set) var lastFocusedNodeID: NestedNodeID?
 
     init(
         handshake: @escaping @Sendable () async throws -> NestedProviderHandshake,
@@ -17,11 +20,13 @@ actor StubNestedTopologyProviderClient: NestedTopologyProviderClient {
             AsyncThrowingStream { continuation in
                 continuation.finish()
             }
-        }
+        },
+        focus: (@Sendable (NestedNodeID) async throws -> Void)? = nil
     ) {
         self.handshakeHandler = handshake
         self.snapshotHandler = snapshot
         self.eventsHandler = events
+        self.focusHandler = focus
     }
 
     func handshake() async throws -> NestedProviderHandshake {
@@ -36,6 +41,14 @@ actor StubNestedTopologyProviderClient: NestedTopologyProviderClient {
 
     nonisolated func events() -> AsyncThrowingStream<NestedTopologyEvent, any Error> {
         eventsHandler()
+    }
+
+    func focus(nodeID: NestedNodeID) async throws {
+        focusCount += 1
+        lastFocusedNodeID = nodeID
+        if let focusHandler {
+            try await focusHandler(nodeID)
+        }
     }
 }
 
@@ -91,14 +104,15 @@ enum AttachmentTestFixtures {
     )
 
     static func handshake(
-        instance: String = "instance-a"
+        instance: String = "instance-a",
+        capabilities: NestedCapabilitySet = HerdrProtocol17Compatibility.readCapabilities
     ) -> NestedProviderHandshake {
         NestedProviderHandshake(
             providerKind: .herdr,
             providerInstanceID: NestedProviderInstanceID(rawValue: instance),
             version: "0.7.0",
             protocolNumber: 17,
-            capabilities: HerdrProtocol17Compatibility.readCapabilities
+            capabilities: capabilities
         )
     }
 

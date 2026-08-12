@@ -1,7 +1,7 @@
 public import Foundation
 
-/// Encodes nested topology read results into Foundation JSON objects suitable
-/// for cmux control-socket replies (`JSONSerialization` / `JSONValue`).
+/// Encodes nested topology read/focus results into Foundation JSON objects
+/// suitable for cmux control-socket replies (`JSONSerialization` / `JSONValue`).
 ///
 /// Uses snake_case Codable keys from the public read types. Callers bridge via
 /// `JSONValue(foundationObject:)` on the app/control-socket side.
@@ -11,6 +11,11 @@ public enum NestedTopologyControlSocketPayload: Sendable {
     /// - Parameter result: Projected list result.
     /// - Returns: JSON object dictionary, or `nil` if encoding fails.
     public static func foundationObject(for result: NestedTopologyReadListResult) -> [String: Any]? {
+        encodeToDictionary(result)
+    }
+
+    /// Encodes a focus result as a Foundation dictionary.
+    public static func foundationObject(for result: NestedNodeFocusResult) -> [String: Any]? {
         encodeToDictionary(result)
     }
 
@@ -34,6 +39,14 @@ public enum NestedTopologyControlSocketPayload: Sendable {
             return number.boolValue
         }
         return false
+    }
+
+    /// Decodes a structured compound ``NestedNodeID`` from a Foundation JSON object.
+    public static func decodeNodeID(from foundation: Any?) -> NestedNodeID? {
+        guard let foundation else { return nil }
+        guard JSONSerialization.isValidJSONObject(foundation) else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: foundation) else { return nil }
+        return try? JSONDecoder().decode(NestedNodeID.self, from: data)
     }
 
     private static func encodeToDictionary<T: Encodable>(_ value: T) -> [String: Any]? {

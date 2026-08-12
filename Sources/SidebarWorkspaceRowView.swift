@@ -11,6 +11,8 @@ struct SidebarWorkspaceRowView: View {
     /// Empty unless the nested-topology beta is enabled and attachments exist.
     var nestedSubtrees: [NestedSidebarSubtreeSnapshot] = []
     var onToggleNestedExpansion: ((UUID) -> Void)? = nil
+    /// Focus a nested node under a host surface (capability-gated; beta).
+    var onFocusNestedNode: ((UUID, NestedNodeID) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -33,6 +35,9 @@ struct SidebarWorkspaceRowView: View {
                         snapshot: subtree,
                         onToggleExpansion: {
                             onToggleNestedExpansion?(subtree.hostStableSurfaceID)
+                        },
+                        onFocusNode: { nodeID in
+                            onFocusNestedNode?(subtree.hostStableSurfaceID, nodeID)
                         }
                     )
                     .equatable()

@@ -26,6 +26,8 @@ public actor NestedTopologyAttachmentCoordinator {
     private var eventTasks: [UUID: Task<Void, Never>]
     private var generationTokens: [UUID: UUID]
     private var liveEnvironmentSurfaceIDs: Set<UUID>
+    /// Live provider clients retained for capability-gated mutations (PR5).
+    private var liveClients: [UUID: any NestedTopologyProviderClient]
 
     private let validator: any NestedEndpointValidating
     private let clientFactory: any NestedTopologyProviderClientFactory
@@ -77,6 +79,7 @@ public actor NestedTopologyAttachmentCoordinator {
         self.eventTasks = [:]
         self.generationTokens = [:]
         self.liveEnvironmentSurfaceIDs = []
+        self.liveClients = [:]
         self.validator = validator
         self.clientFactory = clientFactory
         self.handoff = handoff
@@ -292,6 +295,7 @@ public actor NestedTopologyAttachmentCoordinator {
                 record.pluginWriterHandoffActive = true
                 record.lastErrorClass = nil
                 attachments[hostStableSurfaceID] = record
+                liveClients[hostStableSurfaceID] = client
 
                 startEventObservation(
                     hostStableSurfaceID: hostStableSurfaceID,
@@ -454,14 +458,116 @@ public actor NestedTopologyAttachmentCoordinator {
             throw NestedAttachmentError.invalidState(record.state)
         }
         if let expectedAttachmentID, record.attachmentID != expectedAttachmentID {
-            throw NestedAttachmentError.invalidState(record.state)
+            throw NestedAttachmentError.providerInstanceMismatch
         }
         if let expectedProviderInstanceID,
            record.providerInstanceID != expectedProviderInstanceID
         {
-            throw NestedAttachmentError.invalidState(record.state)
+            throw NestedAttachmentError.providerInstanceMismatch
         }
         return record
+    }
+
+    /// Capability-gated focus for one virtual nested node.
+    ///
+    /// Resolves host surface + attachment generation atomically before send,
+    /// forwards typed JSON via the retained provider client, and reconciles
+    /// topology from provider events (no optimistic focus invention).
+    @discardableResult
+    public func focusNode(_ request: NestedNodeFocusRequest) async throws -> NestedNodeFocusResult {
+        guard let authorization = request.authorization, authorization.isExplicitOptIn else {
+            throw NestedAttachmentError.optInRequired
+        }
+        if case .authenticatedControlSocket(let requestID) = authorization {
+            let sanitized = NestedDisplayStringSanitizer.sanitize(
+                requestID,
+                maxUTF8ByteCount: limits.maxAuthorizationRequestIDUTF8ByteCount
+            )
+            if sanitized.utf8.count > limits.maxAuthorizationRequestIDUTF8ByteCount
+                || (sanitized.isEmpty && !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            {
+                throw NestedAttachmentError.oversizedField("authorization.request_id")
+            }
+        }
+
+        let record = try resolveLiveAttachment(
+            hostStableSurfaceID: request.hostStableSurfaceID,
+            expectedAttachmentID: request.expectedAttachmentID,
+            expectedProviderInstanceID: request.expectedProviderInstanceID
+        )
+
+        guard record.capabilities.contains(.topologyFocusV1) else {
+            throw NestedAttachmentError.capabilityAbsent(.topologyFocusV1)
+        }
+        guard let providerInstanceID = record.providerInstanceID else {
+            throw NestedAttachmentError.invalidState(record.state)
+        }
+        guard request.nodeID.providerKind == record.providerKind else {
+            throw NestedAttachmentError.wrongHostSurface
+        }
+        guard request.nodeID.providerInstanceID == providerInstanceID else {
+            throw NestedAttachmentError.providerInstanceMismatch
+        }
+        guard let snapshot = record.latestSnapshot else {
+            throw NestedAttachmentError.invalidState(record.state)
+        }
+        guard snapshot.hostStableSurfaceID == request.hostStableSurfaceID else {
+            throw NestedAttachmentError.wrongHostSurface
+        }
+        guard Self.containsNode(request.nodeID, in: snapshot) else {
+            throw NestedAttachmentError.nodeNotFound(request.nodeID)
+        }
+        guard let client = liveClients[request.hostStableSurfaceID] else {
+            throw NestedAttachmentError.invalidState(record.state)
+        }
+
+        let generation = generationTokens[request.hostStableSurfaceID]
+
+        do {
+            try await client.focus(nodeID: request.nodeID)
+        } catch let error as NestedTopologyProviderError {
+            if case .providerError(let code, _) = error, code == "capability_absent" {
+                throw NestedAttachmentError.capabilityAbsent(.topologyFocusV1)
+            }
+            throw NestedAttachmentError.providerFailed(detail: error.localizedDescription)
+        } catch {
+            throw NestedAttachmentError.providerFailed(
+                detail: String(describing: type(of: error))
+            )
+        }
+
+        // Re-resolve atomically after the await — reject stale/detached races.
+        guard generationTokens[request.hostStableSurfaceID] == generation,
+              let post = attachments[request.hostStableSurfaceID],
+              post.state == .live,
+              post.attachmentID == record.attachmentID,
+              post.providerInstanceID == providerInstanceID
+        else {
+            throw NestedAttachmentError.cancelled
+        }
+        if let postSnapshot = post.latestSnapshot,
+           !Self.containsNode(request.nodeID, in: postSnapshot)
+        {
+            throw NestedAttachmentError.nodeNotFound(request.nodeID)
+        }
+
+        emit(
+            NestedAttachmentTelemetryEvent(
+                name: "focus_accepted",
+                state: post.state,
+                providerKind: post.providerKind,
+                hostStableSurfaceID: request.hostStableSurfaceID,
+                attachmentID: post.attachmentID
+            )
+        )
+
+        return NestedNodeFocusResult(
+            hostStableSurfaceID: request.hostStableSurfaceID,
+            attachmentID: post.attachmentID,
+            providerInstanceID: providerInstanceID,
+            nodeID: request.nodeID,
+            accepted: true
+        )
     }
 
     // MARK: - Internals
@@ -474,6 +580,7 @@ public actor NestedTopologyAttachmentCoordinator {
         generationTokens[hostStableSurfaceID] = UUID()
         connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
         eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
+        liveClients.removeValue(forKey: hostStableSurfaceID)
 
         let previous = attachments.removeValue(forKey: hostStableSurfaceID)
         liveEnvironmentSurfaceIDs.remove(hostStableSurfaceID)
@@ -504,6 +611,7 @@ public actor NestedTopologyAttachmentCoordinator {
         guard generationTokens[hostStableSurfaceID] == generation else { return }
         connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
         eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
+        liveClients.removeValue(forKey: hostStableSurfaceID)
         liveEnvironmentSurfaceIDs.remove(hostStableSurfaceID)
         publishEnvironmentMirror()
         try? handoff.release(hostStableSurfaceID: hostStableSurfaceID)
@@ -604,6 +712,73 @@ public actor NestedTopologyAttachmentCoordinator {
                 }
             }
             attachments[hostStableSurfaceID] = record
+            emit(
+                NestedAttachmentTelemetryEvent(
+                    name: "topology_updated",
+                    state: record.state,
+                    providerKind: record.providerKind,
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    attachmentID: record.attachmentID
+                )
+            )
+            return
+        }
+
+        // Incremental reconcile (including focusChanged). Never invent topology
+        // from mutation RPC success alone — only provider events update focus.
+        guard let current = record.latestSnapshot,
+              let instanceID = record.providerInstanceID
+        else {
+            return
+        }
+        var reducer = NestedTopologyReducer(
+            providerKind: record.providerKind,
+            providerInstanceID: instanceID,
+            limits: clientConfigurationDefaults.topologyLimits
+        )
+        do {
+            _ = try reducer.apply(.replaceSnapshot(current))
+            let changed = try reducer.apply(event)
+            guard changed, let next = reducer.snapshot else { return }
+            record.latestSnapshot = next
+            attachments[hostStableSurfaceID] = record
+            emit(
+                NestedAttachmentTelemetryEvent(
+                    name: "topology_updated",
+                    state: record.state,
+                    providerKind: record.providerKind,
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    attachmentID: record.attachmentID
+                )
+            )
+        } catch {
+            // Invalid incremental events do not invent state; keep last good snapshot.
+            emit(
+                NestedAttachmentTelemetryEvent(
+                    name: "event_rejected",
+                    state: record.state,
+                    providerKind: record.providerKind,
+                    errorClass: "event_validation_failed",
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    attachmentID: record.attachmentID
+                )
+            )
+        }
+    }
+
+    private static func containsNode(
+        _ nodeID: NestedNodeID,
+        in snapshot: NestedTopologySnapshot
+    ) -> Bool {
+        switch nodeID.kind {
+        case .workspace:
+            return snapshot.workspaces.contains { $0.id == nodeID }
+        case .tab:
+            return snapshot.tabs.contains { $0.id == nodeID }
+        case .pane:
+            return snapshot.panes.contains { $0.id == nodeID }
+        case .agent:
+            return snapshot.agents.contains { $0.id == nodeID }
         }
     }
 

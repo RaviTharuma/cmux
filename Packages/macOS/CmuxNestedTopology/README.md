@@ -1,8 +1,8 @@
 # CmuxNestedTopology
 
-Provider-neutral nested topology model, read-only Herdr socket adapter, secure
-attachment lifecycle, and **read projection** for cmux (PR 1–4 of the native
-Herdr nested-topology plan).
+Provider-neutral nested topology model, Herdr socket adapter, secure
+attachment lifecycle, read projection, and **capability-gated focus** for cmux
+(PR 1–5 of the native Herdr nested-topology plan).
 
 ## Scope
 
@@ -13,19 +13,60 @@ This package owns:
 - topology events and a validating pure reducer
 - capability sets and connection-state values
 - in-memory association, parent-map, and title-lock values
-- provider-neutral ``NestedTopologyProviderClient``
+- provider-neutral ``NestedTopologyProviderClient`` (read + focus)
 - ``HerdrNestedTopologyClient`` (newline-delimited JSON Unix socket; no `herdr` CLI)
 - ``NestedTopologyAttachmentCoordinator`` — opt-in attachment lifecycle, endpoint
-  security validation, host move/close hooks, and plugin single-writer handoff
+  security validation, host move/close hooks, plugin single-writer handoff, and
+  capability-gated ``focusNode``
 - **PR4 read projection**
   - ``NestedTopologyTwoPassRenderer`` / ``NestedTopologyReadService``
   - public read nodes + ``nested.topology.list`` JSON payload helpers
   - immutable ``NestedSidebarSubtreeSnapshot`` for sidebar mounting
   - cmux→client capability token ``nested_topology.read.v1``
+- **PR5 focus**
+  - ``NestedNodeFocusRequest`` / ``NestedNodeFocusResult``
+  - Herdr `workspace.focus` / `tab.focus` / `pane.focus` / `agent.focus`
+  - cmux→client capability token ``nested_topology.focus.v1``
+  - control-socket method ``nested.node.focus``
 
-It does **not** mutate cmux `Workspace` / Bonsplit state, forward focus (PR 5),
-or persist restore descriptors (PR 6). Herdr descendants remain virtual under one
-host surface; they are never mirrored into Ghostty/Bonsplit PTYs.
+It does **not** mutate cmux `Workspace` / Bonsplit state, persist restore
+descriptors (PR 6), or implement rename / send-input / split / close (separate
+follow-up PRs). Herdr descendants remain virtual under one host surface; they
+are never mirrored into Ghostty/Bonsplit PTYs.
+
+## Focus API (PR 5)
+
+### Rules
+
+1. Resolve host surface + attachment generation atomically before send.
+2. Reject stale generation, wrong host, wrong kind, unsupported capability, or
+   disconnected provider.
+3. Forward typed JSON only — never synthesize keystrokes/shell when a method is
+   unavailable.
+4. Refresh/reconcile from provider events; do **not** invent optimistic topology
+   from RPC success alone.
+
+### Control socket (app-wired)
+
+- Semantic capability: `nested_topology.focus.v1`
+- Method: `nested.node.focus`
+  - required: `host_surface_id`, structured `node_id`
+  - optional: `expected_attachment_id`, `expected_provider_instance_id`
+- Authorization: authenticated control-socket request ID (or UI `.userConfirmed`)
+- Gated by beta flag `nestedTopology.beta.enabled`
+- Worker-lane (not macOS/cmux focus-intent)
+
+### Sidebar
+
+Clicking a live nested row calls the same gated focus path when the beta flag
+is enabled. Rows remain snapshot-boundary safe (immutable values + closures).
+
+### Deferred action groups (next PRs)
+
+- rename (must set/respect native-title lock)
+- read / prompt / send input
+- split / move / resize / layout
+- close (with confirmation and explicit semantics)
 
 ## Read API (PR 4)
 
@@ -76,6 +117,9 @@ not hold the attachment coordinator or other observable stores.
 Adaptation lives in ``HerdrProtocol17Compatibility``. Unknown JSON fields are
 tolerated; missing required fields are errors.
 
+Negotiated capabilities for protocol 17 include snapshot, events, and focus
+(`topology.focus.v1`). Rename / input / split are not advertised until later PRs.
+
 **Instance identity gap:** protocol 17 `ping` does not return a durable
 server-lifetime `instance_id`. Until Herdr advertises one, the client mints a fresh
 ``NestedProviderInstanceID`` per successful connection and invalidates association
@@ -87,12 +131,12 @@ entries from prior generations on reconnect/resnapshot.
 swift test --package-path Packages/macOS/CmuxNestedTopology
 ```
 
-Adapter, attachment, and read-projection tests use temporary Unix-socket fakes
-(or stubs) and do not require a live Herdr.
+Adapter, attachment, read-projection, and focus tests use temporary Unix-socket
+fakes (or stubs) and do not require a live Herdr.
 
 ## Related
 
 - manaflow-ai/cmux#8737
 - cmux-herdr tracking: https://github.com/RaviTharuma/cmux-herdr/issues/11
-- Upstream PR plan PR 1–3: model, Herdr adapter, attachment lifecycle
-- Upstream PR plan PR 4: read UI + control-socket parity
+- Upstream PR plan PR 1–5: model, Herdr adapter, attachment lifecycle, read UI, focus
+- Upstream PR plan PR 6: restore semantics

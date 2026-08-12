@@ -8,4 +8,6 @@ public enum NestedTopologyPublicCapability: String, Codable, Sendable, Hashable,
     /// Read-only nested topology projection (`nested.topology.list`, optional
     /// `system.tree` `include_nested`).
     case readV1 = "nested_topology.read.v1"
+    /// Capability-gated nested focus (`nested.node.focus`).
+    case focusV1 = "nested_topology.focus.v1"
 }

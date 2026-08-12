@@ -22,6 +22,14 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
     case invalidState(NestedConnectionState)
     /// A caller-supplied string exceeded configured bounds after sanitization.
     case oversizedField(String)
+    /// Provider (or cmux∩provider intersection) lacks the required capability.
+    case capabilityAbsent(NestedProviderCapability)
+    /// Expected provider instance / generation does not match the live binding.
+    case providerInstanceMismatch
+    /// Target node is not present in the attachment's latest snapshot.
+    case nodeNotFound(NestedNodeID)
+    /// Target node / attachment is bound to a different host stable surface.
+    case wrongHostSurface
 
     public var errorDescription: String? {
         switch self {
@@ -45,6 +53,14 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "Nested provider attachment is in invalid state \(state.rawValue)."
         case .oversizedField(let field):
             return "Nested provider attachment field '\(field)' exceeds configured bounds."
+        case .capabilityAbsent(let capability):
+            return "Nested provider lacks capability \(capability.rawValue)."
+        case .providerInstanceMismatch:
+            return "Nested provider instance / generation does not match the live attachment."
+        case .nodeNotFound:
+            return "Nested topology node was not found on the live attachment."
+        case .wrongHostSurface:
+            return "Nested topology target is bound to a different host surface."
         }
     }
 
@@ -61,6 +77,33 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
         case .attachmentNotFound: return "attachment_not_found"
         case .invalidState: return "invalid_state"
         case .oversizedField: return "oversized_field"
+        case .capabilityAbsent: return "capability_absent"
+        case .providerInstanceMismatch: return "provider_instance_mismatch"
+        case .nodeNotFound: return "node_not_found"
+        case .wrongHostSurface: return "wrong_host_surface"
+        }
+    }
+
+    /// Control-socket error code for mutation handlers.
+    public var socketErrorCode: String {
+        switch self {
+        case .optInRequired:
+            return "unauthorized"
+        case .capabilityAbsent:
+            return "capability_absent"
+        case .providerInstanceMismatch, .invalidState(.stale), .invalidState(.disconnected):
+            return "stale_instance"
+        case .invalidState:
+            return "invalid_state"
+        case .attachmentNotFound, .nodeNotFound, .wrongHostSurface:
+            return "not_found"
+        case .cancelled:
+            return "cancelled"
+        case .providerFailed:
+            return "provider_error"
+        case .duplicateAttachment, .attachmentLimitExceeded, .endpointRejected,
+             .incompatibleProvider, .oversizedField:
+            return "invalid_params"
         }
     }
 }

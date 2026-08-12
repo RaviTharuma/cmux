@@ -21,6 +21,7 @@ import Testing
         #expect(handshake.protocolNumber == 17)
         #expect(handshake.capabilities.contains(.topologySnapshotV1))
         #expect(handshake.capabilities.contains(.topologyEventsV1))
+        #expect(handshake.capabilities.contains(.topologyFocusV1))
         // Gap: protocol 17 ping has no instance_id; client mints a connection generation.
         #expect(!handshake.providerInstanceID.rawValue.isEmpty)
 
