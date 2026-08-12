@@ -1,0 +1,351 @@
+import Foundation
+
+/// Read-only Herdr nested topology client over the local newline-delimited JSON Unix socket API.
+///
+/// This client never shells out to the `herdr` CLI. It performs handshake (`ping`),
+/// `session.snapshot`, and `events.subscribe` only. Reconnects always assign a new
+/// provider instance generation (until Herdr returns a durable `instance_id`) and
+/// invalidate association entries from prior generations.
+public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
+    private let configuration: HerdrNestedTopologyClientConfiguration
+    private let compatibility: HerdrProtocol17Compatibility
+    private var associations: NestedAssociationStore
+    private var latestHandshake: NestedProviderHandshake?
+
+    /// Creates a Herdr nested topology client.
+    ///
+    /// - Parameters:
+    ///   - configuration: Socket path, host attachment identity, and transport bounds.
+    ///   - associations: Optional in-memory association store invalidated across generations.
+    ///   - compatibility: Protocol-17 adapter used for decode/mapping.
+    public init(
+        configuration: HerdrNestedTopologyClientConfiguration,
+        associations: NestedAssociationStore = NestedAssociationStore(),
+        compatibility: HerdrProtocol17Compatibility = HerdrProtocol17Compatibility()
+    ) {
+        self.configuration = configuration
+        self.associations = associations
+        self.compatibility = compatibility
+    }
+
+    /// Current association store snapshot.
+    public func associationStore() -> NestedAssociationStore {
+        associations
+    }
+
+    /// Replaces the association store (tests / coordinator wiring).
+    public func setAssociationStore(_ store: NestedAssociationStore) {
+        associations = store
+    }
+
+    /// Latest successful handshake for this actor, if any.
+    public func currentHandshake() -> NestedProviderHandshake? {
+        latestHandshake
+    }
+
+    public func handshake() async throws -> NestedProviderHandshake {
+        let response = try await performRequest(method: "ping", params: [:])
+        guard let result = response.result, case .pong(let pong) = result else {
+            throw NestedTopologyProviderError.missingRequiredField("result.type=pong")
+        }
+
+        // Gap: protocol 17 does not yet advertise a durable server instance_id.
+        // Prefer the provider value when present; otherwise mint a connection generation.
+        let instanceID: NestedProviderInstanceID
+        if let raw = pong.instanceID?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            instanceID = NestedProviderInstanceID(rawValue: raw)
+        } else {
+            instanceID = .randomConnectionGeneration()
+        }
+
+        let handshake = try compatibility.makeHandshake(from: pong, providerInstanceID: instanceID)
+        associations.invalidate(providerInstanceGeneration: handshake.providerInstanceID)
+        latestHandshake = handshake
+        return handshake
+    }
+
+    public func snapshot() async throws -> NestedTopologySnapshot {
+        let handshake = try await ensureHandshake()
+        let response = try await performRequest(method: "session.snapshot", params: [:])
+        guard let result = response.result, case .sessionSnapshot(let wire) = result else {
+            throw NestedTopologyProviderError.missingRequiredField("result.type=session_snapshot")
+        }
+        if wire.protocolNumber != HerdrProtocol17Compatibility.supportedProtocolNumber {
+            throw NestedTopologyProviderError.unsupportedProtocol(wire.protocolNumber)
+        }
+        return try compatibility.makeSnapshot(
+            from: wire,
+            handshake: handshake,
+            attachmentID: configuration.attachmentID,
+            hostStableSurfaceID: configuration.hostStableSurfaceID,
+            limits: configuration.topologyLimits
+        )
+    }
+
+    public nonisolated func events() -> AsyncThrowingStream<NestedTopologyEvent, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                await self.runEventLoop(continuation: continuation)
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    // MARK: - Event loop
+
+    private func runEventLoop(
+        continuation: AsyncThrowingStream<NestedTopologyEvent, any Error>.Continuation
+    ) async {
+        var backoff = configuration.reconnectInitialBackoff
+        var isFirstAttempt = true
+
+        while !Task.isCancelled {
+            do {
+                if !isFirstAttempt {
+                    // Mandatory full resnapshot on every reconnect.
+                    _ = try await handshake()
+                    let snap = try await snapshot()
+                    continuation.yield(.replaceSnapshot(snap))
+                } else {
+                    _ = try await ensureHandshake()
+                }
+                isFirstAttempt = false
+                backoff = configuration.reconnectInitialBackoff
+                try await subscribeAndForward(continuation: continuation)
+                throw NestedTopologyProviderError.unexpectedEOF
+            } catch is CancellationError {
+                continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+                return
+            } catch let error as NestedTopologyProviderError {
+                switch error {
+                case .cancelled, .unsupportedProtocol:
+                    continuation.finish(throwing: error)
+                    return
+                case .connectTimeout, .requestTimeout, .unexpectedEOF, .oversizedLine,
+                     .oversizedSnapshot, .oversizedEvent, .invalidUTF8, .malformedJSON,
+                     .responseIDMismatch, .providerError, .missingRequiredField, .transport:
+                    break
+                }
+                if Task.isCancelled {
+                    continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+                    return
+                }
+                do {
+                    try await Task.sleep(for: backoff)
+                } catch {
+                    continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+                    return
+                }
+                backoff = doubledBackoff(backoff)
+            } catch {
+                if Task.isCancelled {
+                    continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+                    return
+                }
+                do {
+                    try await Task.sleep(for: backoff)
+                } catch {
+                    continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+                    return
+                }
+                backoff = doubledBackoff(backoff)
+            }
+        }
+        continuation.finish(throwing: NestedTopologyProviderError.cancelled)
+    }
+
+    private func subscribeAndForward(
+        continuation: AsyncThrowingStream<NestedTopologyEvent, any Error>.Continuation
+    ) async throws {
+        let handshake = try await ensureHandshake()
+        let requestID = HerdrJSONRPCRequestID.random(prefix: "cmux-sub")
+        let requestObject: [String: Any] = [
+            "id": requestID.rawValue,
+            "method": "events.subscribe",
+            "params": [
+                "subscriptions": HerdrProtocol17Compatibility.defaultSubscriptions,
+            ],
+        ]
+        let requestData = try Self.encodeJSONObject(requestObject)
+        if requestData.count > configuration.maxLineUTF8ByteCount {
+            throw NestedTopologyProviderError.oversizedLine(
+                maxUTF8ByteCount: configuration.maxLineUTF8ByteCount
+            )
+        }
+
+        let compatibility = self.compatibility
+        let maxLine = configuration.maxLineUTF8ByteCount
+        let maxEvent = configuration.maxEventUTF8ByteCount
+        let connectTimeout = configuration.connectTimeout
+        let requestTimeout = configuration.requestTimeout
+        let socketPath = configuration.socketPath
+
+        let connection = try HerdrUnixSocketConnection(path: socketPath, timeout: connectTimeout)
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                Thread.detachNewThread {
+                    var finished = false
+                    let finish: (Result<Void, any Error>) -> Void = { result in
+                        guard !finished else { return }
+                        finished = true
+                        connection.close()
+                        cont.resume(with: result)
+                    }
+
+                    do {
+                        try connection.writeAll(requestData + Data([UInt8(ascii: "\n")]))
+                        var reader = HerdrJSONLineReader(maxLineUTF8ByteCount: maxLine)
+                        var acknowledged = false
+                        while !Task.isCancelled {
+                            let chunk = try connection.readSome(
+                                maxLength: min(64 * 1024, maxLine),
+                                timeout: requestTimeout
+                            )
+                            let lines = try reader.append(chunk)
+                            for line in lines {
+                                if acknowledged, line.utf8.count > maxEvent {
+                                    throw NestedTopologyProviderError.oversizedEvent(
+                                        maxUTF8ByteCount: maxEvent
+                                    )
+                                }
+                                if !acknowledged {
+                                    let response = try compatibility.decodeResponseLine(
+                                        line,
+                                        expectedRequestID: requestID
+                                    )
+                                    guard let subResult = response.result,
+                                          case .subscriptionStarted = subResult
+                                    else {
+                                        throw NestedTopologyProviderError.missingRequiredField(
+                                            "result.type=subscription_started"
+                                        )
+                                    }
+                                    acknowledged = true
+                                    continue
+                                }
+                                let envelope = try compatibility.decodeEventLine(line)
+                                let events = try compatibility.mapEvent(
+                                    envelope,
+                                    handshake: handshake
+                                )
+                                for event in events {
+                                    continuation.yield(event)
+                                }
+                            }
+                        }
+                        throw NestedTopologyProviderError.cancelled
+                    } catch {
+                        finish(.failure(error))
+                    }
+                }
+            }
+        } onCancel: {
+            connection.close()
+        }
+    }
+
+    // MARK: - Request helper
+
+    private func ensureHandshake() async throws -> NestedProviderHandshake {
+        if let latestHandshake {
+            return latestHandshake
+        }
+        return try await handshake()
+    }
+
+    private func performRequest(
+        method: String,
+        params: [String: Any]
+    ) async throws -> HerdrWireResponse {
+        let requestID = HerdrJSONRPCRequestID.random(prefix: "cmux")
+        let requestObject: [String: Any] = [
+            "id": requestID.rawValue,
+            "method": method,
+            "params": params,
+        ]
+        let requestData = try Self.encodeJSONObject(requestObject)
+        if requestData.count > configuration.maxLineUTF8ByteCount {
+            throw NestedTopologyProviderError.oversizedLine(
+                maxUTF8ByteCount: configuration.maxLineUTF8ByteCount
+            )
+        }
+
+        let compatibility = self.compatibility
+        let maxLine = configuration.maxLineUTF8ByteCount
+        let maxSnapshot = configuration.maxSnapshotUTF8ByteCount
+        let connectTimeout = configuration.connectTimeout
+        let requestTimeout = configuration.requestTimeout
+        let socketPath = configuration.socketPath
+
+        let connection = try HerdrUnixSocketConnection(path: socketPath, timeout: connectTimeout)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<HerdrWireResponse, Error>) in
+                Thread.detachNewThread {
+                    var finished = false
+                    let finish: (Result<HerdrWireResponse, any Error>) -> Void = { result in
+                        guard !finished else { return }
+                        finished = true
+                        connection.close()
+                        cont.resume(with: result)
+                    }
+                    do {
+                        try connection.writeAll(requestData + Data([UInt8(ascii: "\n")]))
+                        var reader = HerdrJSONLineReader(maxLineUTF8ByteCount: maxLine)
+                        let clock = ContinuousClock()
+                        let deadline = clock.now.advanced(by: requestTimeout)
+                        while clock.now < deadline {
+                            if Task.isCancelled {
+                                throw NestedTopologyProviderError.cancelled
+                            }
+                            let remaining = deadline - clock.now
+                            let timeout = remaining < Duration.milliseconds(1)
+                                ? Duration.milliseconds(1)
+                                : remaining
+                            let chunk = try connection.readSome(
+                                maxLength: min(64 * 1024, maxLine),
+                                timeout: timeout
+                            )
+                            let lines = try reader.append(chunk)
+                            if let line = lines.first {
+                                if method == "session.snapshot",
+                                   line.utf8.count > maxSnapshot
+                                {
+                                    throw NestedTopologyProviderError.oversizedSnapshot(
+                                        maxUTF8ByteCount: maxSnapshot
+                                    )
+                                }
+                                let response = try compatibility.decodeResponseLine(
+                                    line,
+                                    expectedRequestID: requestID
+                                )
+                                finish(.success(response))
+                                return
+                            }
+                        }
+                        throw NestedTopologyProviderError.requestTimeout
+                    } catch {
+                        finish(.failure(error))
+                    }
+                }
+            }
+        } onCancel: {
+            connection.close()
+        }
+    }
+
+    private func doubledBackoff(_ backoff: Duration) -> Duration {
+        let doubled = backoff + backoff
+        return doubled > configuration.reconnectMaxBackoff
+            ? configuration.reconnectMaxBackoff
+            : doubled
+    }
+
+    private static func encodeJSONObject(_ object: [String: Any]) throws -> Data {
+        guard JSONSerialization.isValidJSONObject(object) else {
+            throw NestedTopologyProviderError.malformedJSON("request is not a valid JSON object")
+        }
+        return try JSONSerialization.data(withJSONObject: object, options: [])
+    }
+}
