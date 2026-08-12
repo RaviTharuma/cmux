@@ -102,7 +102,7 @@ struct NestedTopologyReadProjectionTests {
             latestSnapshot: NestedTopologyFixtures.snapshot()
         )
         let nodes = service.list(attachments: [attachment]).attachments[0].nodes
-        #expect(nodes.allSatisfy(\.stale))
+        #expect(nodes.allSatisfy { $0.stale })
         #expect(nodes.allSatisfy { $0.connectionState == .stale })
     }
 
