@@ -4,8 +4,8 @@ import CmuxSettings
 import OSLog
 import Observation
 
-/// App-scoped host for nested topology attachment, read projection, and
-/// capability-gated focus (PR4/PR5).
+/// App-scoped host for nested topology attachment, read projection,
+/// capability-gated focus, and session-snapshot restore (PR4–PR6).
 ///
 /// Owns the ``NestedTopologyAttachmentCoordinator`` (actor) and a MainActor
 /// read cache used by the sidebar. Provider descendants remain virtual under a
@@ -24,11 +24,15 @@ final class NestedTopologyController {
     /// Last projected sidebar subtrees keyed by host stable surface ID.
     private(set) var sidebarSubtreesByHostSurfaceID: [UUID: NestedSidebarSubtreeSnapshot] = [:]
 
+    /// Last known persistence intents keyed by host stable surface ID (for session snapshots).
+    private(set) var attachmentIntentsByHostSurfaceID: [UUID: NestedAttachmentIntentDescriptor] = [:]
+
     /// Host surface IDs per host workspace ID string (from last refresh).
     private var hostSurfacesByWorkspaceID: [String: Set<UUID>] = [:]
 
     private var readService = NestedTopologyReadService()
     private var refreshTask: Task<Void, Never>?
+    private var restoreTasks: [UUID: Task<Void, Never>] = [:]
     private let refreshBridge = NestedTopologyRefreshBridge()
 
     /// Synchronous read of the nested-topology beta flag (socket/AppKit paths).
@@ -180,22 +184,69 @@ final class NestedTopologyController {
 
     /// Detaches when the host surface closes (no provider stop / child closes).
     func hostSurfaceClosed(hostStableSurfaceID: UUID) async {
+        cancelPendingRestore(hostStableSurfaceID: hostStableSurfaceID)
         await coordinator.noteHostSurfaceClosed(hostStableSurfaceID: hostStableSurfaceID)
         expandedHostSurfaceIDs.remove(hostStableSurfaceID)
         sidebarSubtreesByHostSurfaceID.removeValue(forKey: hostStableSurfaceID)
+        attachmentIntentsByHostSurfaceID.removeValue(forKey: hostStableSurfaceID)
         scheduleSidebarRefresh()
     }
 
     /// Tears down all attachments (app/window teardown).
     func teardown() async {
+        for (_, task) in restoreTasks {
+            task.cancel()
+        }
+        restoreTasks.removeAll()
         await coordinator.teardown()
         expandedHostSurfaceIDs = []
         sidebarSubtreesByHostSurfaceID = [:]
+        attachmentIntentsByHostSurfaceID = [:]
         hostSurfacesByWorkspaceID = [:]
+    }
+
+    /// Persistence intent for a host surface (session snapshot capture).
+    func attachmentIntent(for hostStableSurfaceID: UUID) -> NestedAttachmentIntentDescriptor? {
+        guard Self.isEnabled else { return nil }
+        return attachmentIntentsByHostSurfaceID[hostStableSurfaceID]
+    }
+
+    /// Schedules deferred restore after a terminal panel + stable surface exist.
+    ///
+    /// Cancelled automatically when the host surface closes or the controller tears down.
+    func scheduleRestoreAttachment(
+        hostWorkspaceID: String,
+        hostStableSurfaceID: UUID,
+        intent: NestedAttachmentIntentDescriptor
+    ) {
+        guard Self.isEnabled else { return }
+        cancelPendingRestore(hostStableSurfaceID: hostStableSurfaceID)
+        attachmentIntentsByHostSurfaceID[hostStableSurfaceID] = intent
+        let task = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            let record = await self.coordinator.restoreFromIntent(
+                hostWorkspaceID: hostWorkspaceID,
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent
+            )
+            guard !Task.isCancelled else { return }
+            if let nextIntent = record.sessionPersistenceIntent ?? record.pendingRestoreIntent {
+                self.attachmentIntentsByHostSurfaceID[hostStableSurfaceID] = nextIntent
+            }
+            self.restoreTasks[hostStableSurfaceID] = nil
+            self.scheduleSidebarRefresh()
+        }
+        restoreTasks[hostStableSurfaceID] = task
+    }
+
+    /// Cancels an in-flight restore for a host surface (panel closed mid-restore).
+    func cancelPendingRestore(hostStableSurfaceID: UUID) {
+        restoreTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
     }
 
     private func rebuildSidebarCache(from attachments: [NestedAttachmentRecord]) {
         var next: [UUID: NestedSidebarSubtreeSnapshot] = [:]
+        var intents: [UUID: NestedAttachmentIntentDescriptor] = [:]
         var byWorkspace: [String: Set<UUID>] = [:]
         for attachment in attachments {
             let expanded = expandedHostSurfaceIDs.contains(attachment.hostStableSurfaceID)
@@ -203,9 +254,20 @@ final class NestedTopologyController {
                 for: attachment,
                 isExpanded: expanded
             )
+            if let intent = attachment.sessionPersistenceIntent ?? attachment.pendingRestoreIntent {
+                intents[attachment.hostStableSurfaceID] = intent
+            }
             byWorkspace[attachment.hostWorkspaceID, default: []].insert(attachment.hostStableSurfaceID)
         }
         sidebarSubtreesByHostSurfaceID = next
+        // Preserve intents for surfaces that still have a pending restore task
+        // but have not yet published an attachment record.
+        for (surfaceID, intent) in attachmentIntentsByHostSurfaceID where intents[surfaceID] == nil {
+            if restoreTasks[surfaceID] != nil {
+                intents[surfaceID] = intent
+            }
+        }
+        attachmentIntentsByHostSurfaceID = intents
         hostSurfacesByWorkspaceID = byWorkspace
     }
 

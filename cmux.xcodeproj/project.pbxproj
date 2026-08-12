@@ -1476,6 +1476,7 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		A6AC72030000000000000001 /* NativeSpinner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AC72030000000000000002 /* NativeSpinner.swift */; };
 		BD02A4A1E51236230ADAB64C /* NestedSidebarSubtreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF26E0915F2062EFC4CBE962 /* NestedSidebarSubtreeView.swift */; };
 		6564808223B9A5ED8E0ED8D8 /* NestedTopologyCapabilitiesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD3AA14B5C0493B87AC5DA4F /* NestedTopologyCapabilitiesTests.swift */; };
+		C750N6RSTR0000000000002 /* NestedTopologyRestoreSessionSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C750N6RSTR0000000000001 /* NestedTopologyRestoreSessionSnapshotTests.swift */; };
 		FCC87625D11097C386831B7E /* NestedTopologyController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D1BA7A1504F9476EE1034B /* NestedTopologyController.swift */; };
 		8B1B2AB6EC6ACDB2CD39A9BB /* NewBrowserWorkspaceShortcutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04698069140539D8495D6B9B /* NewBrowserWorkspaceShortcutUITests.swift */; };
 		C0DE77060000000000000003 /* NewWorkspaceMenuModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE77060000000000000004 /* NewWorkspaceMenuModel.swift */; };
@@ -4238,6 +4239,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		A6AC72030000000000000002 /* NativeSpinner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSpinner.swift; sourceTree = "<group>"; };
 		EF26E0915F2062EFC4CBE962 /* NestedSidebarSubtreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestedSidebarSubtreeView.swift; sourceTree = "<group>"; };
 		AD3AA14B5C0493B87AC5DA4F /* NestedTopologyCapabilitiesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestedTopologyCapabilitiesTests.swift; sourceTree = "<group>"; };
+		C750N6RSTR0000000000001 /* NestedTopologyRestoreSessionSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestedTopologyRestoreSessionSnapshotTests.swift; sourceTree = "<group>"; };
 		68D1BA7A1504F9476EE1034B /* NestedTopologyController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestedTopologyController.swift; sourceTree = "<group>"; };
 		04698069140539D8495D6B9B /* NewBrowserWorkspaceShortcutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewBrowserWorkspaceShortcutUITests.swift; sourceTree = "<group>"; };
 		C0DE77060000000000000004 /* NewWorkspaceMenuModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewWorkspaceMenuModel.swift; sourceTree = "<group>"; };
@@ -8211,6 +8213,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				0C7D0CDD0C7D0CDD0C7D0001 /* RemoteTmuxNewWindowCwdTests.swift */,
 				5F5553CA5553CA5553CA0002 /* RemoteTmuxCapabilitiesTests.swift */,
 				AD3AA14B5C0493B87AC5DA4F /* NestedTopologyCapabilitiesTests.swift */,
+				C750N6RSTR0000000000001 /* NestedTopologyRestoreSessionSnapshotTests.swift */,
 				C57570010000000000000001 /* RightSidebarPanelViewTestSupport.swift */,
 				5F5553CB5553CB5553CB0002 /* RightSidebarRemoteCommandTests.swift */,
 				3F704ED4F177122D7DCD0BCC /* RemoteTmuxSessionListParserTests.swift */,
@@ -11272,6 +11275,7 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				13AB1A2E5DA6AD02DCAE971D /* MockBridgeInputCapture.swift in Sources */,
 				596100000000000000000001 /* NativeNotificationFallbackCommandTests.swift in Sources */,
 				6564808223B9A5ED8E0ED8D8 /* NestedTopologyCapabilitiesTests.swift in Sources */,
+				C750N6RSTR0000000000002 /* NestedTopologyRestoreSessionSnapshotTests.swift in Sources */,
 				A5FB1400 /* NewWorkspaceMenuModelTests.swift in Sources */,
 				734F49D37E543DD01C2F4FEF /* NotificationAndMenuBarTests.swift in Sources */,
 				D7AB00000000000000B021 /* NotificationDismissSyncTests.swift in Sources */,

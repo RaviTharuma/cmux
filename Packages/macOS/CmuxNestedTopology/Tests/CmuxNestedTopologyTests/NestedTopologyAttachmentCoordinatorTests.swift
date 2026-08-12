@@ -668,7 +668,7 @@ private final class EnvironmentMirrorCapture: @unchecked Sendable {
     }
 }
 
-private actor AsyncGate {
+actor AsyncGate {
     private var openFlag = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
