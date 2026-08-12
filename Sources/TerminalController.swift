@@ -7,6 +7,7 @@ import CmuxFeedback
 import CmuxBrowser
 import CmuxControlSocket
 import CmuxFoundation
+import CmuxNestedTopology
 import CmuxPanes
 import CmuxRemoteDaemon
 import CmuxRemoteWorkspace
@@ -1311,6 +1312,8 @@ class TerminalController {
         case "remote.tmux.pane_grids": return v2RemoteTmuxPaneGrids(id: request.id, params: request.params)
         case "remote.tmux.pane_surfaces":
             return v2RemoteTmuxPaneSurfaces(id: request.id, params: request.params)
+        case "nested.topology.list":
+            return v2NestedTopologyList(id: request.id, params: request.params)
 #if DEBUG
         case "remote.tmux.test_exec": return v2RemoteTmuxTestExec(id: request.id, params: request.params)
         case "remote.tmux.test_set_frame": return v2RemoteTmuxTestSetFrame(id: request.id, params: request.params)
@@ -2402,6 +2405,7 @@ class TerminalController {
             "workspace.remote.pty_sessions", "workspace.remote.pty_close", "workspace.remote.pty_detach",
             "workspace.remote.pty_bridge", "workspace.remote.pty_resize", "workspace.remote.pty_attach_end",
             "workspace.remote.terminal_session_end", "remote.tmux.sessions", "remote.tmux.attach", "remote.tmux.detach", "remote.tmux.state", "remote.tmux.mirror", "remote.tmux.window", "remote.tmux.pane_grids", "remote.tmux.pane_surfaces",
+            "nested.topology.list",
             "session.restore_previous",
             "settings.open",
             "feedback.open",
@@ -2565,7 +2569,12 @@ class TerminalController {
             "version": 2,
             "socket_path": socketServer.currentSocketPath,
             "access_mode": socketServer.accessMode.rawValue,
-            "methods": methods.sorted()
+            "methods": methods.sorted(),
+            // Additive semantic capabilities (nested topology PR4). Existing
+            // clients that only read `methods` remain compatible.
+            "capabilities": [
+                NestedTopologyPublicCapability.readV1.rawValue,
+            ],
         ]
     }
 

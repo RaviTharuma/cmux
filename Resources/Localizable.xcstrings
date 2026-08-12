@@ -34265,6 +34265,210 @@
         }
       }
     },
+    "settings.betaFeatures.nestedTopology": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nested Topology"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネストトポロジ"
+          }
+        }
+      }
+    },
+    "settings.betaFeatures.nestedTopology.subtitleOff": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hides nested topology reads and sidebar subtrees until you enable them here."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここで有効化するまで、ネストトポロジの読み取りとサイドバーのサブツリーを非表示にします。"
+          }
+        }
+      }
+    },
+    "settings.betaFeatures.nestedTopology.subtitleOn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows Herdr nested workspaces/tabs/panes/agents as virtual descendants under the host terminal surface. Read-only; does not create cmux panes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ホスト端末サーフェス配下に Herdr のネストされたワークスペース/タブ/ペイン/エージェントを仮想子孫として表示します。読み取り専用で、cmux ペインは作成しません。"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.header": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nested"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネスト"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.connecting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続中"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.disconnected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切断"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.incompatible": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incompatible"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非互換"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.live": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブ"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.rejected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejected"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒否"
+          }
+        }
+      }
+    },
+    "sidebar.nestedTopology.state.stale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "古い"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.disabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nested topology beta is disabled"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネストトポロジのベータは無効です"
+          }
+        }
+      }
+    },
+    "socket.nestedTopology.invalidHostSurfaceID": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Missing or invalid host_surface_id"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "host_surface_id が欠落しているか無効です"
+          }
+        }
+      }
+    },
     "socket.workspace.remote.terminalProfile.invalid": {
       "extractionState": "manual",
       "localizations": {
