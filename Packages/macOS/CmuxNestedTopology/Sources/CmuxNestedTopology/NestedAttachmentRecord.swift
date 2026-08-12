@@ -18,6 +18,8 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
     public var endpoint: NestedAttachmentEndpoint?
     /// Provider instance ID / connection generation after a successful handshake.
     public var providerInstanceID: NestedProviderInstanceID?
+    /// Whether ``providerInstanceID`` is durable provider proof (safe for restore compare).
+    public var providerInstanceIdentityProofAvailable: Bool
     /// Negotiated capabilities after a successful handshake.
     public var capabilities: NestedCapabilitySet
     /// Lifecycle state.
@@ -27,7 +29,12 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
     /// Redacted last error class (never a socket path or payload).
     public var lastErrorClass: String?
     /// Latest topology snapshot while live/stale, if any.
+    ///
+    /// In-memory only for UI/control-socket reads — never persisted into session
+    /// snapshots (see ``NestedAttachmentIntentDescriptor``).
     public var latestSnapshot: NestedTopologySnapshot?
+    /// Persisted restore intent awaiting confirmation, if any (PR 6).
+    public var pendingRestoreIntent: NestedAttachmentIntentDescriptor?
 
     enum CodingKeys: String, CodingKey {
         case attachmentID = "attachment_id"
@@ -36,11 +43,13 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
         case providerKind = "provider_kind"
         case endpoint
         case providerInstanceID = "provider_instance_id"
+        case providerInstanceIdentityProofAvailable = "provider_instance_identity_proof_available"
         case capabilities
         case state
         case pluginWriterHandoffActive = "plugin_writer_handoff_active"
         case lastErrorClass = "last_error_class"
         case latestSnapshot = "latest_snapshot"
+        case pendingRestoreIntent = "pending_restore_intent"
     }
 
     /// Creates an attachment record.
@@ -51,11 +60,13 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
         providerKind: NestedProviderKind,
         endpoint: NestedAttachmentEndpoint? = nil,
         providerInstanceID: NestedProviderInstanceID? = nil,
+        providerInstanceIdentityProofAvailable: Bool = false,
         capabilities: NestedCapabilitySet = NestedCapabilitySet(),
         state: NestedConnectionState = .disconnected,
         pluginWriterHandoffActive: Bool = false,
         lastErrorClass: String? = nil,
-        latestSnapshot: NestedTopologySnapshot? = nil
+        latestSnapshot: NestedTopologySnapshot? = nil,
+        pendingRestoreIntent: NestedAttachmentIntentDescriptor? = nil
     ) {
         self.attachmentID = attachmentID
         self.hostWorkspaceID = NestedDisplayStringSanitizer.sanitize(
@@ -66,15 +77,56 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
         self.providerKind = providerKind
         self.endpoint = endpoint
         self.providerInstanceID = providerInstanceID
+        self.providerInstanceIdentityProofAvailable = providerInstanceIdentityProofAvailable
         self.capabilities = capabilities
         self.state = state
         self.pluginWriterHandoffActive = pluginWriterHandoffActive
         self.lastErrorClass = lastErrorClass
         self.latestSnapshot = latestSnapshot
+        self.pendingRestoreIntent = pendingRestoreIntent
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        attachmentID = try container.decode(UUID.self, forKey: .attachmentID)
+        hostWorkspaceID = try container.decode(String.self, forKey: .hostWorkspaceID)
+        hostStableSurfaceID = try container.decode(UUID.self, forKey: .hostStableSurfaceID)
+        providerKind = try container.decode(NestedProviderKind.self, forKey: .providerKind)
+        endpoint = try container.decodeIfPresent(NestedAttachmentEndpoint.self, forKey: .endpoint)
+        providerInstanceID = try container.decodeIfPresent(
+            NestedProviderInstanceID.self,
+            forKey: .providerInstanceID
+        )
+        providerInstanceIdentityProofAvailable = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .providerInstanceIdentityProofAvailable
+        ) ?? false
+        capabilities = try container.decodeIfPresent(NestedCapabilitySet.self, forKey: .capabilities)
+            ?? NestedCapabilitySet()
+        state = try container.decodeIfPresent(NestedConnectionState.self, forKey: .state)
+            ?? .disconnected
+        pluginWriterHandoffActive = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .pluginWriterHandoffActive
+        ) ?? false
+        lastErrorClass = try container.decodeIfPresent(String.self, forKey: .lastErrorClass)
+        latestSnapshot = try container.decodeIfPresent(
+            NestedTopologySnapshot.self,
+            forKey: .latestSnapshot
+        )
+        pendingRestoreIntent = try container.decodeIfPresent(
+            NestedAttachmentIntentDescriptor.self,
+            forKey: .pendingRestoreIntent
+        )
     }
 
     /// Whether the attachment currently suppresses competing plugin writers.
     public var suppressesPluginWriters: Bool {
         pluginWriterHandoffActive && state == .live
+    }
+
+    /// Session-snapshot persistence intent for this attachment, if any.
+    public var sessionPersistenceIntent: NestedAttachmentIntentDescriptor? {
+        NestedAttachmentIntentDescriptor.make(from: self)
     }
 }

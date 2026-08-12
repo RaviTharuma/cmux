@@ -52,14 +52,22 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
 
         // Gap: protocol 17 does not yet advertise a durable server instance_id.
         // Prefer the provider value when present; otherwise mint a connection generation.
+        // Minted generations are not durable identity proof for unattended restore.
         let instanceID: NestedProviderInstanceID
+        let instanceIdentityIsDurable: Bool
         if let raw = pong.instanceID?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
             instanceID = NestedProviderInstanceID(rawValue: raw)
+            instanceIdentityIsDurable = true
         } else {
             instanceID = .randomConnectionGeneration()
+            instanceIdentityIsDurable = false
         }
 
-        let handshake = try compatibility.makeHandshake(from: pong, providerInstanceID: instanceID)
+        let handshake = try compatibility.makeHandshake(
+            from: pong,
+            providerInstanceID: instanceID,
+            instanceIdentityIsDurable: instanceIdentityIsDurable
+        )
         associations.invalidate(providerInstanceGeneration: handshake.providerInstanceID)
         latestHandshake = handshake
         return handshake

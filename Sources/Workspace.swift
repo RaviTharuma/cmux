@@ -2,6 +2,7 @@ import CmuxAppKitSupportUI
 import CmuxFoundation
 import Foundation
 import CmuxCore
+import CmuxNestedTopology
 import CmuxRemoteDaemon
 import CmuxRemoteSession
 import CmuxRemoteWorkspace
@@ -741,6 +742,11 @@ extension Workspace {
         case .cloudVMLoading:
             return nil
         }
+        let nestedAttachmentIntent: NestedAttachmentIntentDescriptor? = {
+            guard panel.panelType == .terminal, NestedTopologyController.isEnabled else { return nil }
+            return AppDelegate.shared?.nestedTopologyController
+                .attachmentIntent(for: panel.stableSurfaceId)
+        }()
         return SessionPanelSnapshot(
             id: panelId,
             stableSurfaceId: panel.stableSurfaceId,
@@ -766,7 +772,8 @@ extension Workspace {
             rightSidebarTool: rightSidebarToolSnapshot,
             customSidebar: customSidebarSnapshot,
             agentSession: agentSessionSnapshot,
-            project: projectSnapshot, workspaceTodo: workspaceTodoSnapshot
+            project: projectSnapshot, workspaceTodo: workspaceTodoSnapshot,
+            nestedAttachmentIntent: nestedAttachmentIntent
         )
     }
     private func closedPanelHistoryEntry(panelId: UUID, tabId: TabID, pane: PaneID) -> ClosedPanelHistoryEntry? {
@@ -1833,6 +1840,7 @@ extension Workspace {
 
     func applySessionPanelMetadata(_ snapshot: SessionPanelSnapshot, toPanelId panelId: UUID) {
         adoptPersistedStableSurfaceId(from: snapshot, panelId: panelId)
+        scheduleNestedAttachmentRestoreIfNeeded(from: snapshot, panelId: panelId)
 
         if let title = snapshot.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
             panelTitles[panelId] = title

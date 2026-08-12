@@ -289,11 +289,13 @@ public actor NestedTopologyAttachmentCoordinator {
                 publishEnvironmentMirror()
 
                 record.providerInstanceID = handshake.providerInstanceID
+                record.providerInstanceIdentityProofAvailable = handshake.instanceIdentityIsDurable
                 record.capabilities = handshake.capabilities
                 record.latestSnapshot = snapshot
                 record.state = .live
                 record.pluginWriterHandoffActive = true
                 record.lastErrorClass = nil
+                record.pendingRestoreIntent = nil
                 attachments[hostStableSurfaceID] = record
                 liveClients[hostStableSurfaceID] = client
 
@@ -391,6 +393,302 @@ public actor NestedTopologyAttachmentCoordinator {
             )
             throw wrapped
         }
+    }
+
+    /// Restores attachment intent from a session snapshot (PR 6).
+    ///
+    /// Re-runs security and compatibility checks, compares provider identity, and
+    /// fetches a **fresh** snapshot. Never rehydrates nested nodes, output,
+    /// credentials, or association records from the persisted intent.
+    ///
+    /// When identity proof is unavailable or mismatched — or the reattach policy
+    /// requires confirmation — the attachment is left ``disconnected`` with a
+    /// pending intent so the UI / control socket can confirm before connecting.
+    @discardableResult
+    public func restoreFromIntent(
+        hostWorkspaceID: String,
+        hostStableSurfaceID: UUID,
+        intent: NestedAttachmentIntentDescriptor
+    ) async -> NestedAttachmentRecord {
+        let sanitizedWorkspaceID = NestedDisplayStringSanitizer.sanitize(
+            hostWorkspaceID,
+            maxUTF8ByteCount: limits.maxHostWorkspaceIDUTF8ByteCount
+        )
+        let workspaceID = sanitizedWorkspaceID.isEmpty ? hostWorkspaceID : sanitizedWorkspaceID
+
+        if let existing = attachments[hostStableSurfaceID] {
+            switch existing.state {
+            case .connecting, .live, .stale:
+                emit(
+                    NestedAttachmentTelemetryEvent(
+                        name: "restore_skipped_live",
+                        state: existing.state,
+                        providerKind: existing.providerKind,
+                        hostStableSurfaceID: hostStableSurfaceID,
+                        attachmentID: existing.attachmentID
+                    )
+                )
+                return existing
+            case .disconnected, .incompatible, .rejected:
+                await detach(
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    reason: .cancelled,
+                    emitTelemetry: false
+                )
+            }
+        }
+
+        var pending = NestedAttachmentRecord(
+            hostWorkspaceID: workspaceID,
+            hostStableSurfaceID: hostStableSurfaceID,
+            providerKind: intent.providerKind,
+            state: .disconnected,
+            lastErrorClass: NestedAttachmentError.restoreRequiresConfirmation(
+                reason: "pending"
+            ).telemetryErrorClass,
+            pendingRestoreIntent: intent
+        )
+        attachments[hostStableSurfaceID] = pending
+        emit(
+            NestedAttachmentTelemetryEvent(
+                name: "restore_started",
+                state: .disconnected,
+                providerKind: intent.providerKind,
+                hostStableSurfaceID: hostStableSurfaceID,
+                attachmentID: pending.attachmentID
+            )
+        )
+
+        guard intent.allowsUnattendedAutoReattach,
+              let locator = intent.endpointLocator,
+              let expectedInstanceID = intent.lastVerifiedProviderInstanceID
+        else {
+            let reason: String
+            if intent.reattachPolicy != .autoIfProviderInstanceMatches {
+                reason = "policy_requires_confirmation"
+            } else if !intent.providerInstanceIdentityProofAvailable
+                || intent.lastVerifiedProviderInstanceID == nil
+            {
+                reason = "identity_proof_unavailable"
+            } else {
+                reason = "endpoint_missing"
+            }
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .restoreRequiresConfirmation(reason: reason)
+            )
+        }
+
+        let endpoint: NestedAttachmentEndpoint
+        do {
+            endpoint = try validator.validatePreConnect(path: locator.socketPath)
+        } catch let error as NestedEndpointSecurityError {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .endpointRejected(error)
+            )
+        } catch {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .restoreProviderUnavailable
+            )
+        }
+
+        if let expectedIdentity = intent.lastVerifiedFileIdentity,
+           expectedIdentity != endpoint.fileIdentity
+        {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .restoreSocketIdentityChanged
+            )
+        }
+
+        let generation = UUID()
+        generationTokens[hostStableSurfaceID] = generation
+        pending.state = .connecting
+        pending.endpoint = endpoint
+        pending.lastErrorClass = nil
+        attachments[hostStableSurfaceID] = pending
+
+        do {
+            try Task.checkCancellation()
+            guard generationTokens[hostStableSurfaceID] == generation else {
+                throw NestedAttachmentError.cancelled
+            }
+
+            switch intent.providerKind {
+            case .herdr:
+                let configuration = HerdrNestedTopologyClientConfiguration(
+                    socketPath: endpoint.canonicalPath,
+                    attachmentID: pending.attachmentID,
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    connectTimeout: clientConfigurationDefaults.connectTimeout,
+                    requestTimeout: clientConfigurationDefaults.requestTimeout,
+                    topologyLimits: clientConfigurationDefaults.topologyLimits
+                )
+                // Fresh client → empty in-memory association store (never rehydrated
+                // from session snapshots / plugin association state files).
+                let client = clientFactory.makeHerdrClient(configuration: configuration)
+                let handshake = try await client.handshake()
+
+                guard generationTokens[hostStableSurfaceID] == generation else {
+                    throw NestedAttachmentError.cancelled
+                }
+
+                try validator.revalidateIdentity(
+                    path: endpoint.canonicalPath,
+                    expected: endpoint.fileIdentity
+                )
+
+                guard handshake.instanceIdentityIsDurable else {
+                    throw NestedAttachmentError.restoreRequiresConfirmation(
+                        reason: "identity_proof_unavailable"
+                    )
+                }
+                guard handshake.providerInstanceID == expectedInstanceID else {
+                    throw NestedAttachmentError.restoreRequiresConfirmation(
+                        reason: "provider_instance_mismatch"
+                    )
+                }
+
+                let snapshot = try await client.snapshot()
+                guard generationTokens[hostStableSurfaceID] == generation else {
+                    throw NestedAttachmentError.cancelled
+                }
+
+                try handoff.acquire(
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    attachmentID: pending.attachmentID
+                )
+                liveEnvironmentSurfaceIDs.insert(hostStableSurfaceID)
+                publishEnvironmentMirror()
+
+                pending.providerInstanceID = handshake.providerInstanceID
+                pending.providerInstanceIdentityProofAvailable = true
+                pending.capabilities = handshake.capabilities
+                pending.latestSnapshot = snapshot
+                pending.state = .live
+                pending.pluginWriterHandoffActive = true
+                pending.lastErrorClass = nil
+                pending.pendingRestoreIntent = nil
+                attachments[hostStableSurfaceID] = pending
+                liveClients[hostStableSurfaceID] = client
+
+                startEventObservation(
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    generation: generation,
+                    client: client
+                )
+
+                emit(
+                    NestedAttachmentTelemetryEvent(
+                        name: "restore_live",
+                        state: .live,
+                        providerKind: intent.providerKind,
+                        hostStableSurfaceID: hostStableSurfaceID,
+                        attachmentID: pending.attachmentID
+                    )
+                )
+                return pending
+            }
+        } catch is CancellationError {
+            await failAttachment(
+                hostStableSurfaceID: hostStableSurfaceID,
+                generation: generation,
+                state: .disconnected,
+                error: .cancelled,
+                remove: true
+            )
+            return NestedAttachmentRecord(
+                hostWorkspaceID: workspaceID,
+                hostStableSurfaceID: hostStableSurfaceID,
+                providerKind: intent.providerKind,
+                state: .disconnected,
+                lastErrorClass: NestedAttachmentError.cancelled.telemetryErrorClass
+            )
+        } catch let error as NestedAttachmentError {
+            if error == .cancelled {
+                await failAttachment(
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    generation: generation,
+                    state: .disconnected,
+                    error: .cancelled,
+                    remove: true
+                )
+                return NestedAttachmentRecord(
+                    hostWorkspaceID: workspaceID,
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    providerKind: intent.providerKind,
+                    state: .disconnected,
+                    lastErrorClass: NestedAttachmentError.cancelled.telemetryErrorClass
+                )
+            }
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: error,
+                generation: generation
+            )
+        } catch let error as NestedEndpointSecurityError {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .endpointRejected(error),
+                generation: generation
+            )
+        } catch let error as NestedTopologyProviderError {
+            if case .unsupportedProtocol = error {
+                return await leaveRestoreDisconnected(
+                    hostStableSurfaceID: hostStableSurfaceID,
+                    intent: intent,
+                    error: .incompatibleProvider(detail: error.localizedDescription),
+                    generation: generation
+                )
+            }
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .restoreProviderUnavailable,
+                generation: generation
+            )
+        } catch {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .restoreProviderUnavailable,
+                generation: generation
+            )
+        }
+    }
+
+    /// Confirms a previously restored disconnected intent (user / control-socket).
+    @discardableResult
+    public func confirmPendingRestore(
+        hostStableSurfaceID: UUID,
+        authorization: NestedAttachmentAuthorization?
+    ) async throws -> NestedAttachmentRecord {
+        guard let authorization, authorization.isExplicitOptIn else {
+            throw NestedAttachmentError.optInRequired
+        }
+        guard let record = attachments[hostStableSurfaceID],
+              let intent = record.pendingRestoreIntent,
+              let locator = intent.endpointLocator
+        else {
+            throw NestedAttachmentError.attachmentNotFound(
+                hostStableSurfaceID: hostStableSurfaceID
+            )
+        }
+        return try await attach(
+            hostWorkspaceID: record.hostWorkspaceID,
+            hostStableSurfaceID: hostStableSurfaceID,
+            providerKind: intent.providerKind,
+            socketPath: locator.socketPath,
+            authorization: authorization
+        )
     }
 
     /// Detaches a host surface without stopping the provider or closing children.
@@ -571,6 +869,73 @@ public actor NestedTopologyAttachmentCoordinator {
     }
 
     // MARK: - Internals
+
+    private func leaveRestoreDisconnected(
+        hostStableSurfaceID: UUID,
+        intent: NestedAttachmentIntentDescriptor,
+        error: NestedAttachmentError,
+        generation: UUID? = nil
+    ) async -> NestedAttachmentRecord {
+        if let generation, generationTokens[hostStableSurfaceID] != generation {
+            // A newer attach/detach/teardown superseded this restore attempt.
+            return NestedAttachmentRecord(
+                hostWorkspaceID: attachments[hostStableSurfaceID]?.hostWorkspaceID ?? "",
+                hostStableSurfaceID: hostStableSurfaceID,
+                providerKind: intent.providerKind,
+                state: .disconnected,
+                lastErrorClass: NestedAttachmentError.cancelled.telemetryErrorClass,
+                pendingRestoreIntent: intent
+            )
+        }
+        if generation != nil {
+            connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
+            eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
+            liveClients.removeValue(forKey: hostStableSurfaceID)
+            liveEnvironmentSurfaceIDs.remove(hostStableSurfaceID)
+            publishEnvironmentMirror()
+            try? handoff.release(hostStableSurfaceID: hostStableSurfaceID)
+        }
+
+        let workspaceID = attachments[hostStableSurfaceID]?.hostWorkspaceID ?? ""
+        let attachmentID = attachments[hostStableSurfaceID]?.attachmentID ?? UUID()
+        let state: NestedConnectionState
+        switch error {
+        case .endpointRejected:
+            state = .rejected
+        case .incompatibleProvider:
+            state = .incompatible
+        default:
+            state = .disconnected
+        }
+
+        let record = NestedAttachmentRecord(
+            attachmentID: attachmentID,
+            hostWorkspaceID: workspaceID,
+            hostStableSurfaceID: hostStableSurfaceID,
+            providerKind: intent.providerKind,
+            endpoint: nil,
+            providerInstanceID: nil,
+            providerInstanceIdentityProofAvailable: false,
+            capabilities: NestedCapabilitySet(),
+            state: state,
+            pluginWriterHandoffActive: false,
+            lastErrorClass: error.telemetryErrorClass,
+            latestSnapshot: nil,
+            pendingRestoreIntent: intent
+        )
+        attachments[hostStableSurfaceID] = record
+        emit(
+            NestedAttachmentTelemetryEvent(
+                name: "restore_disconnected",
+                state: state,
+                providerKind: intent.providerKind,
+                errorClass: error.telemetryErrorClass,
+                hostStableSurfaceID: hostStableSurfaceID,
+                attachmentID: attachmentID
+            )
+        )
+        return record
+    }
 
     private func detach(
         hostStableSurfaceID: UUID,
