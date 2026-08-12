@@ -786,14 +786,10 @@ extension Workspace {
             customSidebar: customSidebarSnapshot,
             simulator: simulatorSnapshot,
             agentSession: agentSessionSnapshot,
-<<<<<<< HEAD
             project: projectSnapshot,
             workspaceTodo: workspaceTodoSnapshot,
-            notificationsPanel: notificationsPanelSnapshot
-=======
-            project: projectSnapshot, workspaceTodo: workspaceTodoSnapshot,
+            notificationsPanel: notificationsPanelSnapshot,
             nestedAttachmentIntent: nestedAttachmentIntent
->>>>>>> c2a553e9b6 (Add nested topology restore semantics (PR6) (#6))
         )
     }
     private func closedPanelHistoryEntry(panelId: UUID, tabId: TabID, pane: PaneID) -> ClosedPanelHistoryEntry? {
