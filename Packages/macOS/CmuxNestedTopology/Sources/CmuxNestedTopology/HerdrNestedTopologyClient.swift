@@ -74,6 +74,14 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     }
 
     public func snapshot() async throws -> NestedTopologySnapshot {
+        try await snapshotWithLayouts().snapshot
+    }
+
+    /// Snapshot plus Herdr layout trees keyed by tab id (PR7 window mirror).
+    public func snapshotWithLayouts() async throws -> (
+        snapshot: NestedTopologySnapshot,
+        layouts: [String: RemoteHerdrLayoutNode]
+    ) {
         let handshake = try await ensureHandshake()
         let response = try await performRequest(method: "session.snapshot", params: [:])
         guard let result = response.result, case .sessionSnapshot(let wire) = result else {
@@ -82,13 +90,14 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
         if wire.protocolNumber != HerdrProtocol17Compatibility.supportedProtocolNumber {
             throw NestedTopologyProviderError.unsupportedProtocol(wire.protocolNumber)
         }
-        return try compatibility.makeSnapshot(
+        let snapshot = try compatibility.makeSnapshot(
             from: wire,
             handshake: handshake,
             attachmentID: configuration.attachmentID,
             hostStableSurfaceID: configuration.hostStableSurfaceID,
             limits: configuration.topologyLimits
         )
+        return (snapshot, wire.layouts)
     }
 
     public nonisolated func events() -> AsyncThrowingStream<NestedTopologyEvent, any Error> {
@@ -311,7 +320,7 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
         return try await handshake()
     }
 
-    private func performRequest(
+    func performRequest(
         method: String,
         params: [String: Any]
     ) async throws -> HerdrWireResponse {
