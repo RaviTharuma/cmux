@@ -1511,6 +1511,22 @@ class TerminalController {
         case "remote.tmux.pane_grids": return v2RemoteTmuxPaneGrids(id: request.id, params: request.params)
         case "remote.tmux.pane_surfaces":
             return v2RemoteTmuxPaneSurfaces(id: request.id, params: request.params)
+        case "remote.herdr.sessions":
+            return v2RemoteHerdrSessions(id: request.id, params: request.params)
+        case "remote.herdr.attach":
+            return v2RemoteHerdrAttach(id: request.id, params: request.params)
+        case "remote.herdr.mirror":
+            return v2RemoteHerdrMirror(id: request.id, params: request.params)
+        case "remote.herdr.window":
+            return v2RemoteHerdrWindow(id: request.id, params: request.params)
+        case "remote.herdr.detach":
+            return v2RemoteHerdrDetach(id: request.id, params: request.params)
+        case "remote.herdr.state":
+            return v2RemoteHerdrState(id: request.id, params: request.params)
+        case "remote.herdr.pane_surfaces":
+            return v2RemoteHerdrPaneSurfaces(id: request.id, params: request.params)
+        case "remote.herdr.pane_grids":
+            return v2RemoteHerdrPaneGrids(id: request.id, params: request.params)
         case "nested.topology.list":
             return v2NestedTopologyList(id: request.id, params: request.params)
         case "nested.node.focus":
@@ -2775,6 +2791,7 @@ class TerminalController {
             "workspace.remote.terminal_session_launching",
             "workspace.remote.terminal_session_connected", "workspace.remote.terminal_session_end",
             "remote.tmux.sessions", "remote.tmux.attach", "remote.tmux.detach", "remote.tmux.state", "remote.tmux.mirror", "remote.tmux.window", "remote.tmux.pane_grids", "remote.tmux.pane_surfaces",
+            "remote.herdr.sessions", "remote.herdr.attach", "remote.herdr.mirror", "remote.herdr.window", "remote.herdr.detach", "remote.herdr.state", "remote.herdr.pane_surfaces", "remote.herdr.pane_grids",
             "nested.topology.list",
             "nested.node.focus",
             "session.restore_previous",

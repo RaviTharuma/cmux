@@ -90,5 +90,16 @@ public struct BetaFeaturesCatalogSection: SettingCatalogSection {
         userDefaultsKey: "nestedTopology.beta.enabled"
     )
 
+    /// Native Herdr ssh-tmux parity mirror over a local Unix socket (not the
+    /// nested sidebar attachment). Sessions appear as sidebar workspaces, Herdr
+    /// tabs as cmux tabs, and Herdr panes as Bonsplit splits with real
+    /// TerminalPanels. Defaults off; while off, every `remote.herdr.*` entry
+    /// point is gated (unless nested topology is enabled as a shared beta).
+    public let remoteHerdrMirror = DefaultsKey<Bool>(
+        id: "betaFeatures.remoteHerdrMirror",
+        defaultValue: false,
+        userDefaultsKey: "betaFeatures.remoteHerdrMirror"
+    )
+
     public init() {}
 }

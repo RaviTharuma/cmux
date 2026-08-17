@@ -1788,6 +1788,13 @@ C0DE71B10000000000000001 /* AppDelegate+AgentChatNotifications.swift in Sources 
 		74060000000000000000000E /* RemoteTmuxWindowMirrorFocusSeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74060000000000000000000D /* RemoteTmuxWindowMirrorFocusSeedTests.swift */; };
 		8845B95B4AA5B7B28540D01B /* RemoteTmuxWindowMirrorSizingSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFCBA6217C0EB912342F0A5 /* RemoteTmuxWindowMirrorSizingSnapshot.swift */; };
 		740600000000000000000008 /* RemoteTmuxWindowMirrorSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740600000000000000000007 /* RemoteTmuxWindowMirrorSplitView.swift */; };
+		RH10000000000000000000002 /* RemoteHerdrController.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000000000000000000001 /* RemoteHerdrController.swift */; };
+		RH10000100000000000000002 /* RemoteHerdrController+Attach.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000100000000000000001 /* RemoteHerdrController+Attach.swift */; };
+		RH10000200000000000000002 /* RemoteHerdrSessionHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000200000000000000001 /* RemoteHerdrSessionHost.swift */; };
+		RH10000300000000000000002 /* RemoteHerdrWindowMirrorHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000300000000000000001 /* RemoteHerdrWindowMirrorHost.swift */; };
+		RH10000400000000000000002 /* RemoteHerdrWindowMirrorHost+Bonsplit.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000400000000000000001 /* RemoteHerdrWindowMirrorHost+Bonsplit.swift */; };
+		RH10000500000000000000002 /* RemoteHerdrWindowMirrorSplitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000500000000000000001 /* RemoteHerdrWindowMirrorSplitView.swift */; };
+		RH10000600000000000000002 /* TerminalController+RemoteHerdr.swift in Sources */ = {isa = PBXBuildFile; fileRef = RH10000600000000000000001 /* TerminalController+RemoteHerdr.swift */; };
 		0F17C0DE0F17C0DE0F17C002 /* RemoteTmuxWindowRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F17C0DE0F17C0DE0F17C001 /* RemoteTmuxWindowRegistry.swift */; };
 		FA00C0DE0001BEEF0001CAFE /* RemoteTmuxWindowRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA00C0DE0002BEEF0002CAFE /* RemoteTmuxWindowRegistryTests.swift */; };
 		A7C9D1E3F5B7A9C1D3E5F702 /* RemoteTmuxWindowReorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C9D1E3F5B7A9C1D3E5F701 /* RemoteTmuxWindowReorderTests.swift */; };
@@ -4572,6 +4579,13 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 		74060000000000000000000D /* RemoteTmuxWindowMirrorFocusSeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowMirrorFocusSeedTests.swift; sourceTree = "<group>"; };
 		4AFCBA6217C0EB912342F0A5 /* RemoteTmuxWindowMirrorSizingSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowMirrorSizingSnapshot.swift; sourceTree = "<group>"; };
 		740600000000000000000007 /* RemoteTmuxWindowMirrorSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowMirrorSplitView.swift; sourceTree = "<group>"; };
+		RH10000000000000000000001 /* RemoteHerdrController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrController.swift; sourceTree = "<group>"; };
+		RH10000100000000000000001 /* RemoteHerdrController+Attach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrController+Attach.swift; sourceTree = "<group>"; };
+		RH10000200000000000000001 /* RemoteHerdrSessionHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrSessionHost.swift; sourceTree = "<group>"; };
+		RH10000300000000000000001 /* RemoteHerdrWindowMirrorHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrWindowMirrorHost.swift; sourceTree = "<group>"; };
+		RH10000400000000000000001 /* RemoteHerdrWindowMirrorHost+Bonsplit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrWindowMirrorHost+Bonsplit.swift; sourceTree = "<group>"; };
+		RH10000500000000000000001 /* RemoteHerdrWindowMirrorSplitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHerdrWindowMirrorSplitView.swift; sourceTree = "<group>"; };
+		RH10000600000000000000001 /* TerminalController+RemoteHerdr.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalController+RemoteHerdr.swift; sourceTree = "<group>"; };
 		0F17C0DE0F17C0DE0F17C001 /* RemoteTmuxWindowRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowRegistry.swift; sourceTree = "<group>"; };
 		FA00C0DE0002BEEF0002CAFE /* RemoteTmuxWindowRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowRegistryTests.swift; sourceTree = "<group>"; };
 		A7C9D1E3F5B7A9C1D3E5F701 /* RemoteTmuxWindowReorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTmuxWindowReorderTests.swift; sourceTree = "<group>"; };
@@ -7365,6 +7379,13 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 					74060000000000000000001A /* BonsplitConfiguration+RemoteTmuxEmbedded.swift */,
 					4AFCBA6217C0EB912342F0A5 /* RemoteTmuxWindowMirrorSizingSnapshot.swift */,
 					740600000000000000000007 /* RemoteTmuxWindowMirrorSplitView.swift */,
+					RH10000000000000000000001 /* RemoteHerdrController.swift */,
+					RH10000100000000000000001 /* RemoteHerdrController+Attach.swift */,
+					RH10000200000000000000001 /* RemoteHerdrSessionHost.swift */,
+					RH10000300000000000000001 /* RemoteHerdrWindowMirrorHost.swift */,
+					RH10000400000000000000001 /* RemoteHerdrWindowMirrorHost+Bonsplit.swift */,
+					RH10000500000000000000001 /* RemoteHerdrWindowMirrorSplitView.swift */,
+					RH10000600000000000000001 /* TerminalController+RemoteHerdr.swift */,
 					F2A6C8E40D5B17293C8F6A42 /* TerminalPanelCreationOutcome.swift */,
 					D7D5CC45BBE157F3EF880936 /* RemoteTmuxSessionMirror.swift */,
 					7F023A000000000000007023 /* RemoteTmuxSessionMirror+Helpers.swift */,
@@ -10045,6 +10066,13 @@ C0DE71B10000000000000002 /* AppDelegate+AgentChatNotifications.swift */ = {isa =
 				826F6597BF05F1242E17F0C3 /* RemoteTmuxWindowMirror.swift in Sources */,
 				8845B95B4AA5B7B28540D01B /* RemoteTmuxWindowMirrorSizingSnapshot.swift in Sources */,
 				740600000000000000000008 /* RemoteTmuxWindowMirrorSplitView.swift in Sources */,
+				RH10000000000000000000002 /* RemoteHerdrController.swift in Sources */,
+				RH10000100000000000000002 /* RemoteHerdrController+Attach.swift in Sources */,
+				RH10000200000000000000002 /* RemoteHerdrSessionHost.swift in Sources */,
+				RH10000300000000000000002 /* RemoteHerdrWindowMirrorHost.swift in Sources */,
+				RH10000400000000000000002 /* RemoteHerdrWindowMirrorHost+Bonsplit.swift in Sources */,
+				RH10000500000000000000002 /* RemoteHerdrWindowMirrorSplitView.swift in Sources */,
+				RH10000600000000000000002 /* TerminalController+RemoteHerdr.swift in Sources */,
 				0F17C0DE0F17C0DE0F17C002 /* RemoteTmuxWindowRegistry.swift in Sources */,
 				D5037010000000000000003 /* RenderableSystemSymbol.swift in Sources */,
 				D36A00040000000000000001 /* RendererRealizationController.swift in Sources */,
