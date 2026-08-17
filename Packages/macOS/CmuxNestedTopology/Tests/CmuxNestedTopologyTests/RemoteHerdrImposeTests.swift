@@ -78,7 +78,7 @@ import Testing
         #expect(remove == .removeLeaf(paneID: "w2:p2"))
     }
 
-    @Test func rightAssociatedTernaryAndMetricsExtent() {
+    @Test func rightAssociatedTernaryAndMetricsExtent() throws {
         let ternary = RemoteHerdrLayoutNode(
             width: 300,
             height: 24,
@@ -90,7 +90,7 @@ import Testing
                 leaf("c", width: 99, height: 24, x: 201, y: 0),
             ])
         )
-        let tree = RemoteHerdrImpose.binaryTree(ternary)
+        let tree = try #require(RemoteHerdrImpose.binaryTree(ternary))
         guard case let .split(_, _, _, first, second) = tree,
               case .leaf(let firstID, _) = first,
               case let .split(_, _, _, innerFirst, innerSecond) = second,
@@ -103,11 +103,11 @@ import Testing
         #expect(firstID == "a")
         #expect(b == "b")
         #expect(c == "c")
-        let measured = RemoteHerdrImpose.binaryTree(
+        let measured = try #require(RemoteHerdrImpose.binaryTree(
             horizontalSplit(),
             metrics: RemoteHerdrImposeMetrics(cellWidth: 8, cellHeight: 16, dividerThickness: 4),
             parent: RemoteHerdrImposeSize(width: 800, height: 400)
-        )
+        ))
         guard case let .split(_, _, firstExtent, _, _) = measured else {
             Issue.record("expected measured split")
             return
@@ -143,7 +143,7 @@ import Testing
         #expect(send.shouldSend)
     }
 
-    @Test func planFromReconcileRebuilds() {
+    @Test func planFromReconcileRebuilds() throws {
         let window = RemoteHerdrWindow(
             tabID: "w2:t1",
             title: "Build",
@@ -152,7 +152,7 @@ import Testing
             activePaneID: "w2:p2"
         )
         let (_, result) = RemoteHerdrWindowMirror.apply(window: window, previous: nil)
-        let plan = RemoteHerdrImpose.plan(from: result, title: "Build")
+        let plan = try #require(RemoteHerdrImpose.plan(from: result, title: "Build"))
         #expect(plan.treeAction == .rebuild)
         #expect(plan.focusPaneID == "w2:p2")
         #expect(plan.fractions.count == 1)

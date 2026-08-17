@@ -281,14 +281,19 @@ public enum RemoteHerdrImpose {
     }
 
     /// Right-associated binary view of an n-ary Herdr layout.
+    ///
+    /// Returns `nil` when the layout has no addressable panes (empty split or
+    /// empty pane id) — never synthesizes a leaf with `paneID == ""`.
     public static func binaryTree(
         _ node: RemoteHerdrLayoutNode,
         metrics: RemoteHerdrImposeMetrics? = nil,
         parent: RemoteHerdrImposeSize? = nil
-    ) -> RemoteHerdrDividerNode {
+    ) -> RemoteHerdrDividerNode? {
         switch node.content {
         case let .pane(paneID):
-            return .leaf(paneID: paneID, outer: parent)
+            let trimmed = paneID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return .leaf(paneID: trimmed, outer: parent)
         case let .horizontal(children):
             return join(children: children, horizontal: true, metrics: metrics, parent: parent)
         case let .vertical(children):
@@ -346,6 +351,10 @@ public enum RemoteHerdrImpose {
     }
 
     /// Build the host impose plan for one rendered (visible) layout tree.
+    /// Builds an impose plan for a rendered layout.
+    ///
+    /// Returns `nil` when the layout cannot produce an addressable divider tree
+    /// (no panes / empty splits) — matching ``RemoteHerdrSessionMirror/fallbackLayout``.
     public static func plan(
         rendered: RemoteHerdrLayoutNode,
         previousRendered: RemoteHerdrLayoutNode? = nil,
@@ -355,9 +364,11 @@ public enum RemoteHerdrImpose {
         renderSize: RemoteHerdrImposeSize? = nil,
         regionSize: RemoteHerdrImposeSize? = nil,
         hold: RemoteHerdrDividerDragHold? = nil
-    ) -> RemoteHerdrImposePlan {
+    ) -> RemoteHerdrImposePlan? {
         let parent = regionBoundedPlanParent(render: renderSize, region: regionSize)
-        let tree = binaryTree(rendered, metrics: metrics, parent: parent)
+        guard let tree = binaryTree(rendered, metrics: metrics, parent: parent) else {
+            return nil
+        }
         return RemoteHerdrImposePlan(
             treeAction: treeAction(previousRendered: previousRendered, rendered: rendered),
             dividerTree: tree,
@@ -377,7 +388,7 @@ public enum RemoteHerdrImpose {
         renderSize: RemoteHerdrImposeSize? = nil,
         regionSize: RemoteHerdrImposeSize? = nil,
         hold: RemoteHerdrDividerDragHold? = nil
-    ) -> RemoteHerdrImposePlan {
+    ) -> RemoteHerdrImposePlan? {
         plan(
             rendered: result.renderedLayout,
             previousRendered: previousRendered,
@@ -432,10 +443,10 @@ public enum RemoteHerdrImpose {
         horizontal: Bool,
         metrics: RemoteHerdrImposeMetrics?,
         parent: RemoteHerdrImposeSize?
-    ) -> RemoteHerdrDividerNode {
+    ) -> RemoteHerdrDividerNode? {
         let orientation: RemoteHerdrSplitOrientation = horizontal ? .horizontal : .vertical
         guard let first = children.first else {
-            return .leaf(paneID: "", outer: parent)
+            return nil
         }
         if children.count == 1 {
             return binaryTree(first, metrics: metrics, parent: parent)
@@ -445,7 +456,7 @@ public enum RemoteHerdrImpose {
         let restSpan = rest.reduce(0) { $0 + span($1, horizontal: horizontal) }
         var firstSize: RemoteHerdrImposeSize?
         var secondSize: RemoteHerdrImposeSize?
-        var firstExtent: Double?
+        var measuredFirstExtent: Double?
         let fraction: Double
         if let parent, let metrics {
             let parentExtent = horizontal ? parent.width : parent.height
@@ -456,7 +467,7 @@ public enum RemoteHerdrImpose {
                 metrics: metrics,
                 horizontal: horizontal
             )
-            firstExtent = sized.extent
+            measuredFirstExtent = sized.extent
             fraction = sized.fraction
             if horizontal {
                 firstSize = RemoteHerdrImposeSize(width: sized.extent, height: parent.height)
@@ -478,12 +489,17 @@ public enum RemoteHerdrImpose {
             )
         }
         let restNode = rest.count == 1 ? rest[0] : combined(children: rest, horizontal: horizontal)
+        guard let firstTree = binaryTree(first, metrics: metrics, parent: firstSize),
+              let secondTree = binaryTree(restNode, metrics: metrics, parent: secondSize)
+        else {
+            return nil
+        }
         return .split(
             orientation: orientation,
             fraction: fraction,
-            firstExtent: firstExtent,
-            first: binaryTree(first, metrics: metrics, parent: firstSize),
-            second: binaryTree(restNode, metrics: metrics, parent: secondSize)
+            firstExtent: measuredFirstExtent,
+            first: firstTree,
+            second: secondTree
         )
     }
 

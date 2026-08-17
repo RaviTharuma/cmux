@@ -37,7 +37,7 @@ struct NestedSidebarSubtreeView: View, Equatable {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text(snapshot.accessibilityLabel))
+            .accessibilityLabel(Text(localizedSubtreeAccessibilityLabel))
             .accessibilityIdentifier("NestedTopologySubtreeHeader")
 
             if snapshot.isExpanded {
@@ -61,20 +61,21 @@ struct NestedSidebarSubtreeView: View, Equatable {
     }
 
     private var staleLabel: String {
-        switch snapshot.connectionState {
-        case .disconnected:
-            return String(localized: "sidebar.nestedTopology.state.disconnected", defaultValue: "Disconnected")
-        case .stale:
-            return String(localized: "sidebar.nestedTopology.state.stale", defaultValue: "Stale")
-        case .rejected:
-            return String(localized: "sidebar.nestedTopology.state.rejected", defaultValue: "Rejected")
-        case .incompatible:
-            return String(localized: "sidebar.nestedTopology.state.incompatible", defaultValue: "Incompatible")
-        case .connecting:
-            return String(localized: "sidebar.nestedTopology.state.connecting", defaultValue: "Connecting")
-        case .live:
-            return String(localized: "sidebar.nestedTopology.state.live", defaultValue: "Live")
+        localizedConnectionState(snapshot.connectionState)
+    }
+
+    private var localizedSubtreeAccessibilityLabel: String {
+        var parts: [String] = [
+            String(localized: "sidebar.nestedTopology.a11y.nested", defaultValue: "Nested"),
+            snapshot.providerKind.rawValue,
+        ]
+        if snapshot.isStale {
+            parts.append(
+                String(localized: "sidebar.nestedTopology.a11y.stale", defaultValue: "Stale")
+            )
         }
+        parts.append(localizedConnectionState(snapshot.connectionState))
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -89,7 +90,7 @@ private struct NestedSidebarRowView: View {
         VStack(alignment: .leading, spacing: 1) {
             rowLabel
                 .padding(.leading, CGFloat(12 + depth * 10))
-                .accessibilityLabel(Text(row.accessibilityLabel))
+                .accessibilityLabel(Text(localizedRowAccessibilityLabel))
                 .accessibilityAddTraits(rowAccessibilityTraits)
                 .accessibilityIdentifier("NestedTopologyRow.\(row.node.id.rawID)")
 
@@ -118,7 +119,7 @@ private struct NestedSidebarRowView: View {
                     .accessibilityHidden(true)
             }
             if let status = row.node.agent?.status, row.node.id.kind == .agent || row.node.id.kind == .pane {
-                Text(status.rawValue)
+                Text(localizedAgentStatus(status))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -157,6 +158,31 @@ private struct NestedSidebarRowView: View {
             defaultValue: "Focus nested node"
         )
     }
+
+    private var localizedRowAccessibilityLabel: String {
+        var parts = [row.node.id.kind.rawValue, row.node.label]
+        if row.node.focused {
+            parts.append(
+                String(localized: "sidebar.nestedTopology.a11y.focused", defaultValue: "Focused")
+            )
+        }
+        if row.node.stale || row.node.connectionState == .stale {
+            parts.append(
+                String(localized: "sidebar.nestedTopology.a11y.stale", defaultValue: "Stale")
+            )
+        } else if row.node.connectionState == .disconnected {
+            parts.append(
+                String(
+                    localized: "sidebar.nestedTopology.a11y.disconnected",
+                    defaultValue: "Disconnected"
+                )
+            )
+        }
+        if let status = row.node.agent?.status {
+            parts.append(localizedAgentStatus(status))
+        }
+        return parts.joined(separator: ", ")
+    }
 }
 
 /// Mount helper: returns a subtree view when the beta is on and a snapshot exists.
@@ -176,5 +202,37 @@ struct NestedSidebarSubtreeHost: View {
             .equatable()
             .accessibilityIdentifier("NestedTopologySubtree.\(hostStableSurfaceID.uuidString)")
         }
+    }
+}
+
+private func localizedConnectionState(_ state: NestedConnectionState) -> String {
+    switch state {
+    case .disconnected:
+        return String(localized: "sidebar.nestedTopology.state.disconnected", defaultValue: "Disconnected")
+    case .stale:
+        return String(localized: "sidebar.nestedTopology.state.stale", defaultValue: "Stale")
+    case .rejected:
+        return String(localized: "sidebar.nestedTopology.state.rejected", defaultValue: "Rejected")
+    case .incompatible:
+        return String(localized: "sidebar.nestedTopology.state.incompatible", defaultValue: "Incompatible")
+    case .connecting:
+        return String(localized: "sidebar.nestedTopology.state.connecting", defaultValue: "Connecting")
+    case .live:
+        return String(localized: "sidebar.nestedTopology.state.live", defaultValue: "Live")
+    }
+}
+
+private func localizedAgentStatus(_ status: NestedAgentStatus) -> String {
+    switch status {
+    case .working:
+        return String(localized: "sidebar.nestedTopology.agentStatus.working", defaultValue: "Working")
+    case .idle:
+        return String(localized: "sidebar.nestedTopology.agentStatus.idle", defaultValue: "Idle")
+    case .blocked:
+        return String(localized: "sidebar.nestedTopology.agentStatus.blocked", defaultValue: "Blocked")
+    case .done:
+        return String(localized: "sidebar.nestedTopology.agentStatus.done", defaultValue: "Done")
+    case .unknown:
+        return String(localized: "sidebar.nestedTopology.agentStatus.unknown", defaultValue: "Unknown")
     }
 }
