@@ -1,1 +1,1 @@
-PLACEHOLDER_WILL_FAIL_LOAD_FROM_FILE
+__LOAD_FROM__/tmp/pr10045-push-batches/push_proto_args.json
