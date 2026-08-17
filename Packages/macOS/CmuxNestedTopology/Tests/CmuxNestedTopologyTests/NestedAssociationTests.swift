@@ -14,12 +14,15 @@ import Testing
     @Test func heuristicOnceSkipsAfterFirstSuccess() {
         var store = NestedAssociationStore()
         #expect(store.shouldRunHeuristic(for: key))
-        store.markHeuristicSatisfied(
-            for: key,
-            parentID: NestedTopologyFixtures.nodeID(kind: .tab, rawID: "w1:t1")
-        )
+        let parent = NestedTopologyFixtures.nodeID(kind: .tab, rawID: "w1:t1")
+        store.markHeuristicSatisfied(for: key, parentID: parent)
         #expect(store.shouldRunHeuristic(for: key) == false)
         #expect(store.record(for: key)?.heuristicSatisfied == true)
+        #expect(store.record(for: key)?.parentID == parent)
+
+        let otherParent = NestedTopologyFixtures.nodeID(kind: .tab, rawID: "w1:t2")
+        store.markHeuristicSatisfied(for: key, parentID: otherParent)
+        #expect(store.record(for: key)?.parentID == parent)
     }
 
     @Test func titleLockSuppressesOverwrite() {

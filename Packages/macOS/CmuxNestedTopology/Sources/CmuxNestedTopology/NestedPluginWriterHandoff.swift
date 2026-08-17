@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 public import Foundation
 
 /// Single-writer handoff signal between native nested attachment and the cmux-herdr plugin.
@@ -85,8 +90,16 @@ public struct NestedPluginWriterHandoff: Sendable {
     public func release(hostStableSurfaceID: UUID) throws {
         let fileManager = FileManager.default
         let url = lockFileURL(for: hostStableSurfaceID)
-        if fileManager.fileExists(atPath: url.path) {
+        do {
             try fileManager.removeItem(at: url)
+        } catch let error as NSError
+            where error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError
+        {
+            return
+        } catch let error as NSError
+            where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT)
+        {
+            return
         }
     }
 

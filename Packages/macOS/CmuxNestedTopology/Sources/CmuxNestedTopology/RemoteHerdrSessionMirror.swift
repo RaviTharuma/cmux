@@ -63,14 +63,17 @@ public enum RemoteHerdrSessionMirror {
         zoomedPaneIDs: Set<String> = []
     ) -> [RemoteHerdrWindow] {
         let panesByTab = Dictionary(grouping: snapshot.panes, by: \.tabID)
-        return snapshot.tabs.map { tab in
+        return snapshot.tabs.compactMap { tab in
             let panes = (panesByTab[tab.id] ?? []).sorted { lhs, rhs in
                     if lhs.orderIndex != rhs.orderIndex {
                         return lhs.orderIndex < rhs.orderIndex
                     }
                     return lhs.id.rawID < rhs.id.rawID
                 }
-            let layout = layouts[tab.id.rawID] ?? Self.fallbackLayout(paneIDs: panes.map(\.id.rawID))
+            guard let layout = layouts[tab.id.rawID] ?? Self.fallbackLayout(paneIDs: panes.map(\.id.rawID))
+            else {
+                return nil
+            }
             let zoomedID = panes.map(\.id.rawID).first { zoomedPaneIDs.contains($0) }
             let visible: RemoteHerdrLayoutNode?
             if let zoomedID, let leaf = layout.firstLeaf(withPaneID: zoomedID) {
@@ -93,15 +96,10 @@ public enum RemoteHerdrSessionMirror {
     }
 
     /// Stack remaining panes vertically when Herdr did not publish a tree.
-    public static func fallbackLayout(paneIDs: [String]) -> RemoteHerdrLayoutNode {
+    /// Returns `nil` when there are no panes (never synthesizes an empty pane id).
+    public static func fallbackLayout(paneIDs: [String]) -> RemoteHerdrLayoutNode? {
         guard let first = paneIDs.first else {
-            return RemoteHerdrLayoutNode(
-                width: 80,
-                height: 24,
-                x: 0,
-                y: 0,
-                content: .pane("")
-            )
+            return nil
         }
         if paneIDs.count == 1 {
             return RemoteHerdrLayoutNode(

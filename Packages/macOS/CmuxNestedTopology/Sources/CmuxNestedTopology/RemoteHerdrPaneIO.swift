@@ -19,11 +19,14 @@ public protocol RemoteHerdrPaneIO: Sendable {
 
 extension HerdrNestedTopologyClient: RemoteHerdrPaneIO {
     public func sendKeys(paneID: String, data: Data) async throws {
-        let text = String(decoding: data, as: UTF8.self)
-        _ = try await performRequest(
-            method: "pane.send",
-            params: ["pane_id": paneID, "text": text]
-        )
+        // Prefer UTF-8 `text`; fall back to lossless base64 for non-UTF-8 bytes.
+        let params: [String: Any]
+        if let text = String(data: data, encoding: .utf8) {
+            params = ["pane_id": paneID, "text": text]
+        } else {
+            params = ["pane_id": paneID, "data_base64": data.base64EncodedString()]
+        }
+        _ = try await performRequest(method: "pane.send", params: params)
     }
 
     public func splitPane(paneID: String, direction: RemoteHerdrSplitDirection) async throws {
@@ -62,26 +65,17 @@ extension HerdrNestedTopologyClient: RemoteHerdrPaneIO {
                 "lines": max(1, lines),
             ]
         )
-        return Self.paneReadData(from: response.result)
+        return try Self.paneReadData(from: response.result)
     }
 
-    /// Extracts UTF-8 pane text from a protocol-17 success payload.
-    static func paneReadData(from result: HerdrWireResult?) -> Data {
+    /// Extracts UTF-8 pane text from the documented protocol-17 `pane_text.text` field.
+    static func paneReadData(from result: HerdrWireResult?) throws -> Data {
         guard case let .other(_, object) = result else {
-            return Data()
+            throw NestedTopologyProviderError.missingRequiredField("result.text")
         }
-        for key in ["text", "output", "content", "body", "data"] {
-            if case let .string(text)? = object[key] {
-                return Data(text.utf8)
-            }
+        guard case let .string(text)? = object["text"] else {
+            throw NestedTopologyProviderError.missingRequiredField("result.text")
         }
-        if case let .array(lines)? = object["lines"] {
-            let joined = lines.compactMap { item -> String? in
-                if case let .string(text) = item { return text }
-                return nil
-            }.joined(separator: "\n")
-            return Data(joined.utf8)
-        }
-        return Data()
+        return Data(text.utf8)
     }
 }
