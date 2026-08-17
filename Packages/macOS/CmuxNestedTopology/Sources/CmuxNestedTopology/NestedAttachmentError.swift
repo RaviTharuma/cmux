@@ -1,5 +1,14 @@
 public import Foundation
 
+/// Bounded reasons a restore requires explicit confirmation.
+public enum NestedRestoreConfirmationReason: String, Hashable, Codable, Sendable {
+    case pending
+    case policyRequiresConfirmation = "policy_requires_confirmation"
+    case identityProofUnavailable = "identity_proof_unavailable"
+    case providerInstanceMismatch = "provider_instance_mismatch"
+    case endpointMissing = "endpoint_missing"
+}
+
 /// Errors raised by ``NestedTopologyAttachmentCoordinator``.
 public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
     /// Attachment was requested without explicit opt-in authorization.
@@ -31,7 +40,7 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
     /// Target node / attachment is bound to a different host stable surface.
     case wrongHostSurface
     /// Restore cannot auto-reattach; confirmation is required (identity proof / policy).
-    case restoreRequiresConfirmation(reason: String)
+    case restoreRequiresConfirmation(reason: NestedRestoreConfirmationReason)
     /// Restore observed a changed socket file identity at the persisted path.
     case restoreSocketIdentityChanged
     /// Restored provider endpoint is missing or unreachable.
@@ -45,8 +54,8 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "A nested provider attachment already exists for this host surface."
         case .attachmentLimitExceeded(let limit):
             return "Nested provider attachment limit (\(limit)) exceeded."
-        case .endpointRejected(let error):
-            return error.errorDescription
+        case .endpointRejected:
+            return "Nested provider socket endpoint was rejected."
         case .incompatibleProvider:
             return "Nested provider is incompatible."
         case .providerFailed:
@@ -55,12 +64,12 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "Nested provider attachment cancelled."
         case .attachmentNotFound:
             return "No nested provider attachment exists for this host surface."
-        case .invalidState(let state):
-            return "Nested provider attachment is in invalid state \(state.rawValue)."
-        case .oversizedField(let field):
-            return "Nested provider attachment field '\(field)' exceeds configured bounds."
-        case .capabilityAbsent(let capability):
-            return "Nested provider lacks capability \(capability.rawValue)."
+        case .invalidState:
+            return "Nested provider attachment is in an invalid state."
+        case .oversizedField:
+            return "Nested provider attachment field exceeds configured bounds."
+        case .capabilityAbsent:
+            return "Nested provider lacks a required capability."
         case .providerInstanceMismatch:
             return "Nested provider instance / generation does not match the live attachment."
         case .nodeNotFound:
@@ -93,7 +102,8 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
         case .providerInstanceMismatch: return "provider_instance_mismatch"
         case .nodeNotFound: return "node_not_found"
         case .wrongHostSurface: return "wrong_host_surface"
-        case .restoreRequiresConfirmation: return "restore_requires_confirmation"
+        case .restoreRequiresConfirmation(let reason):
+            return "restore_requires_confirmation.\(reason.rawValue)"
         case .restoreSocketIdentityChanged: return "restore_socket_identity_changed"
         case .restoreProviderUnavailable: return "restore_provider_unavailable"
         }

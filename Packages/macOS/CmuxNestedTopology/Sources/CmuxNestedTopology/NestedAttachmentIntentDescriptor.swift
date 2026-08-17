@@ -150,6 +150,7 @@ public struct NestedAttachmentIntentDescriptor: Hashable, Codable, Sendable {
         reattachPolicy == .autoIfProviderInstanceMatches
             && providerInstanceIdentityProofAvailable
             && lastVerifiedProviderInstanceID != nil
+            && lastVerifiedFileIdentity != nil
             && endpointLocator != nil
             && !(endpointLocator?.socketPath.isEmpty ?? true)
     }
