@@ -10,6 +10,7 @@ import Foundation
 public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     private let configuration: HerdrNestedTopologyClientConfiguration
     private let compatibility: HerdrProtocol17Compatibility
+    private let reconnectScheduler: any NestedReconnectScheduler
     private var associations: NestedAssociationStore
     private var latestHandshake: NestedProviderHandshake?
 
@@ -19,14 +20,17 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     ///   - configuration: Socket path, host attachment identity, and transport bounds.
     ///   - associations: Optional in-memory association store invalidated across generations.
     ///   - compatibility: Protocol-17 adapter used for decode/mapping.
+    ///   - reconnectScheduler: Cancellation-aware backoff used between reconnect attempts.
     public init(
         configuration: HerdrNestedTopologyClientConfiguration,
         associations: NestedAssociationStore = NestedAssociationStore(),
-        compatibility: HerdrProtocol17Compatibility = HerdrProtocol17Compatibility()
+        compatibility: HerdrProtocol17Compatibility = HerdrProtocol17Compatibility(),
+        reconnectScheduler: any NestedReconnectScheduler = NestedContinuousClockReconnectScheduler()
     ) {
         self.configuration = configuration
         self.associations = associations
         self.compatibility = compatibility
+        self.reconnectScheduler = reconnectScheduler
     }
 
     /// Current association store snapshot.
@@ -198,7 +202,7 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
                     return
                 }
                 do {
-                    try await Task.sleep(for: backoff)
+                    try await reconnectScheduler.waitForReconnectAttempt(after: backoff)
                 } catch {
                     continuation.finish(throwing: NestedTopologyProviderError.cancelled)
                     return
@@ -210,7 +214,7 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
                     return
                 }
                 do {
-                    try await Task.sleep(for: backoff)
+                    try await reconnectScheduler.waitForReconnectAttempt(after: backoff)
                 } catch {
                     continuation.finish(throwing: NestedTopologyProviderError.cancelled)
                     return
