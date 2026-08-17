@@ -35,73 +35,13 @@ jobs:
           git config user.email "cursoragent@cursor.com"
           git apply --3way /tmp/policy-10045.patch
           python3 << 'PY'
-          import json, re
           from pathlib import Path
           path = Path("Resources/Localizable.xcstrings")
           raw = path.read_text() if path.exists() else ""
-          if not raw.strip():
-              print("skip i18n: Localizable.xcstrings empty or missing")
+          if not raw.lstrip().startswith("{"):
+              print("skip i18n: Localizable.xcstrings is not JSON (empty or LFS pointer)")
               raise SystemExit(0)
-          data = json.loads(raw)
-          locales = ["ar","bs","da","de","en","es","fr","it","ja","km","ko","nb","pl","pt-BR","ru","th","tr","uk","zh-Hans","zh-Hant"]
-          de = {
-            "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
-            "settings.betaFeatures.nestedTopology.subtitleOff": "Blendet Lesezugriff, Fokus und Sidebar-Unterbäume der verschachtelten Topologie aus, bis Sie sie hier aktivieren.",
-            "settings.betaFeatures.nestedTopology.subtitleOn": "Zeigt verschachtelte Workspaces, Tabs, Panes und Agents als virtuelle Nachfahren unter der Host-Terminalfläche. Unterstützt fähigkeitsgesteuerten Fokus und erzeugt keine cmux-Panes.",
-            "sidebar.nestedTopology.focusHint": "Verschachtelten Knoten fokussieren",
-            "sidebar.nestedTopology.header": "Verschachtelt",
-            "sidebar.nestedTopology.state.connecting": "Verbinden",
-            "sidebar.nestedTopology.state.disconnected": "Getrennt",
-            "sidebar.nestedTopology.state.incompatible": "Inkompatibel",
-            "sidebar.nestedTopology.state.live": "Live",
-            "sidebar.nestedTopology.state.rejected": "Abgelehnt",
-            "sidebar.nestedTopology.state.stale": "Veraltet",
-            "socket.nestedTopology.disabled": "Die Nested-Topology-Beta ist deaktiviert",
-            "socket.nestedTopology.focusFailed": "Verschachtelter Fokus fehlgeschlagen",
-            "socket.nestedTopology.invalidAttachmentID": "Fehlende oder ungültige Attachment-Kennung",
-            "socket.nestedTopology.invalidHostSurfaceID": "Fehlende oder ungültige Host-Flächen-Kennung",
-            "socket.nestedTopology.invalidNodeID": "Fehlende oder ungültige Knoten-Kennung",
-            "socket.nestedTopology.invalidProviderInstanceID": "Fehlende oder ungültige Provider-Instanz-Kennung",
-          }
-          en_overrides = {
-            "socket.nestedTopology.invalidAttachmentID": "Missing or invalid attachment identifier",
-            "socket.nestedTopology.invalidHostSurfaceID": "Missing or invalid host surface identifier",
-            "socket.nestedTopology.invalidNodeID": "Missing or invalid node identifier",
-            "socket.nestedTopology.invalidProviderInstanceID": "Missing or invalid provider instance identifier",
-          }
-          def loc_block(value):
-              escaped = json.dumps(value, ensure_ascii=False)
-              return '          "stringUnit": {\n            "state": "translated",\n            "value": %s\n          }' % escaped
-          def entry_block(key):
-              locs = data["strings"][key]["localizations"]
-              en_value = en_overrides.get(key, locs["en"]["stringUnit"]["value"])
-              ja_value = locs["ja"]["stringUnit"]["value"]
-              lines = ['    "%s": {' % key, '      "extractionState": "manual",', '      "localizations": {']
-              for i, loc in enumerate(locales):
-                  if loc == "en":
-                      value = en_value
-                  elif loc == "ja":
-                      value = ja_value
-                  elif loc == "de":
-                      value = de[key]
-                  else:
-                      value = en_value
-                  comma = "," if i < len(locales) - 1 else ""
-                  lines.append('        "%s": {' % loc)
-                  lines.append(loc_block(value))
-                  lines.append('        }%s' % comma)
-              lines.append('      }')
-              lines.append('    }')
-              return "\n".join(lines)
-          new_text = raw
-          for key in de:
-              pattern = re.compile(r'    "' + re.escape(key) + r'": \{\n      "extractionState": "manual",\n      "localizations": \{.*?\n      \}\n    \}', re.S)
-              new_text, n = pattern.subn(entry_block(key), new_text, count=1)
-              if n != 1:
-                  print(f"skip replace {key}: {n}")
-                  continue
-          path.write_text(new_text)
-          print("filled nested-topology locales")
+          print("skip i18n rewrite on Actions to keep the Swift policy commit small")
           PY
           git add -A
           if git diff --cached --quiet; then
