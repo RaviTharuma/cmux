@@ -1,5 +1,5 @@
 /// Set of negotiated nested-provider capabilities.
-public struct NestedCapabilitySet: Hashable, Codable, Sendable {
+public struct NestedCapabilitySet: Hashable, Sendable {
     /// Contained capability tokens.
     public var capabilities: Set<NestedProviderCapability>
 
@@ -28,5 +28,23 @@ public struct NestedCapabilitySet: Hashable, Codable, Sendable {
     /// Sorted capability raw values for deterministic encoding/tests.
     public var sortedRawValues: [String] {
         capabilities.map(\.rawValue).sorted()
+    }
+}
+
+extension NestedCapabilitySet: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case capabilities
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let values = try container.decodeIfPresent([NestedProviderCapability].self, forKey: .capabilities) ?? []
+        self.init(capabilities: Set(values))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let sorted = capabilities.sorted { $0.rawValue < $1.rawValue }
+        try container.encode(sorted, forKey: .capabilities)
     }
 }
