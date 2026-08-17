@@ -11,6 +11,7 @@ extension RemoteHerdrWindowMirrorHost {
     }
 
     func configureBonsplitController() {
+        bonsplitController.delegate = self
         bonsplitController.tabShortcutHintsEnabled = false
         bonsplitController.onExternalTabDrop = { _ in false }
     }
@@ -221,6 +222,103 @@ extension RemoteHerdrWindowMirrorHost {
             impose(second, onto: split.second)
         default:
             return
+        }
+    }
+}
+
+// MARK: - BonsplitDelegate (tmux RemoteTmuxWindowMirror+Bonsplit)
+
+extension RemoteHerdrWindowMirrorHost: BonsplitDelegate {
+    func splitTabBar(
+        _ controller: BonsplitController,
+        shouldCloseTab tab: Bonsplit.Tab,
+        inPane pane: PaneID
+    ) -> Bool {
+        guard !isApplyingRemoteLayout else { return true }
+        if let herdrPane = paneIdByTabId[tab.id] {
+            onClosePaneRequest?(herdrPane)
+        }
+        return false
+    }
+
+    func splitTabBar(_ controller: BonsplitController, shouldClosePane pane: PaneID) -> Bool {
+        isApplyingRemoteLayout
+    }
+
+    func splitTabBar(
+        _ controller: BonsplitController,
+        shouldSplitPane pane: PaneID,
+        orientation: SplitOrientation
+    ) -> Bool {
+        guard !isApplyingRemoteLayout else { return true }
+        if let herdrPane = paneIdByBonsplitPane[pane] {
+            _ = requestSplit(fromPane: herdrPane, vertical: orientation == .vertical)
+        }
+        return false
+    }
+
+    func splitTabBar(_ controller: BonsplitController, didFocusPane pane: PaneID) {
+        guard !isApplyingRemoteLayout, !isApplyingFocus,
+              let herdrPane = paneIdByBonsplitPane[pane],
+              activePaneID != herdrPane else { return }
+        focus(pane: herdrPane)
+    }
+
+    func splitTabBar(_ controller: BonsplitController, didChangeGeometry snapshot: LayoutSnapshot) {
+        guard !isApplyingRemoteLayout else { return }
+        guard !controller.isDividerDragActive else { return }
+        _ = syncChangedDividerPositions()
+    }
+
+    func splitTabBarDividerDragDidBegin(_ controller: BonsplitController) {
+        TerminalWindowPortalRegistry.beginInteractiveGeometryResize(
+            owner: controller,
+            in: NSApp.currentEvent?.window ?? visibleHostingWindow()
+        )
+        dividerResizeSentSinceDragBegan = false
+        seedMissingDividerBaselines(from: controller.treeSnapshot())
+    }
+
+    func splitTabBarDividerDragDidEnd(_ controller: BonsplitController) {
+        defer { TerminalWindowPortalRegistry.endInteractiveGeometryResize(owner: controller) }
+        guard !isApplyingRemoteLayout else {
+            setNeedsSizingPass()
+            DispatchQueue.main.async { [weak self] in
+                self?.flushDeferredDividerDragEnd()
+            }
+            return
+        }
+        sendDividerDragEnd(controller)
+    }
+
+    private func seedMissingDividerBaselines(from treeNode: ExternalTreeNode) {
+        guard case .split(let split) = treeNode else { return }
+        if let splitId = UUID(uuidString: split.id), lastDividerPositions[splitId] == nil {
+            lastDividerPositions[splitId] = CGFloat(split.dividerPosition)
+        }
+        seedMissingDividerBaselines(from: split.first)
+        seedMissingDividerBaselines(from: split.second)
+    }
+
+    private func flushDeferredDividerDragEnd() {
+        guard !isTornDown else { return }
+        guard !isApplyingRemoteLayout else {
+            DispatchQueue.main.async { [weak self] in
+                self?.flushDeferredDividerDragEnd()
+            }
+            return
+        }
+        sendDividerDragEnd(bonsplitController)
+    }
+
+    private func sendDividerDragEnd(_ controller: BonsplitController) {
+        let sent = syncChangedDividerPositions(sendWithoutBaseline: true)
+            || dividerResizeSentSinceDragBegan
+        dividerResizeSentSinceDragBegan = false
+        if sent {
+            setNeedsSizingPass()
+        } else {
+            setNeedsSizingPassIgnoringInputs()
         }
     }
 }

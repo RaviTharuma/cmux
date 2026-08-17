@@ -20,7 +20,7 @@ final class RemoteHerdrWindowMirrorHost {
     var bonsplitController: BonsplitController
 
     @ObservationIgnored let makePanel: (_ paneID: String) -> TerminalPanel?
-    @ObservationIgnored private let paneIO: any RemoteHerdrPaneIO
+    @ObservationIgnored let paneIO: any RemoteHerdrPaneIO
     @ObservationIgnored weak var workspaceBonsplitController: BonsplitController?
 
     private(set) var layout: RemoteHerdrLayoutNode?
@@ -45,6 +45,24 @@ final class RemoteHerdrWindowMirrorHost {
 
     @ObservationIgnored var onTerminalPanelAdded: ((TerminalPanel) -> Void)?
     @ObservationIgnored var onTerminalPanelRemoved: ((TerminalPanel) -> Void)?
+    /// User chrome close → ``pane.close`` (session host owns the RPC).
+    @ObservationIgnored var onClosePaneRequest: ((String) -> Void)?
+    /// User focus → ``pane.focus`` (session host owns the RPC).
+    @ObservationIgnored var onFocusPaneRequest: ((String) -> Void)?
+    /// User split → ``pane.split`` (session host owns the RPC).
+    @ObservationIgnored var onSplitPaneRequest: ((_ paneID: String, _ vertical: Bool) -> Void)?
+    /// Divider / client size claim → ``pane.resize`` (session host owns the RPC).
+    @ObservationIgnored var onResizePaneRequest: ((_ paneID: String, _ cols: Int, _ rows: Int) -> Void)?
+
+    /// Container size for feed-forward client claims (points).
+    @ObservationIgnored var containerSizePt: CGSize?
+    @ObservationIgnored var containerScale: CGFloat = 2
+    @ObservationIgnored var renderFrameSize: CGSize?
+    @ObservationIgnored var hostProbeView: NSView?
+    @ObservationIgnored var sizingPassScheduled = false
+    @ObservationIgnored var lastClaimedClientGrid: (cols: Int, rows: Int)?
+    @ObservationIgnored var dividerResizeSentSinceDragBegan = false
+    @ObservationIgnored private let sizing = RemoteHerdrSizing()
 
     var surfaceIDsInLayoutOrder: [UUID] {
         let order = (visibleLayout ?? layout)?.paneIDsInOrder ?? Array(panelsByPaneId.keys)
@@ -208,27 +226,39 @@ final class RemoteHerdrWindowMirrorHost {
 
     func noteRemoteActivePane(_ paneID: String) {
         guard panelsByPaneId[paneID] != nil else { return }
+        projectActivePane(paneID)
+    }
+
+    func projectActivePane(_ paneID: String) {
+        guard panelsByPaneId[paneID] != nil else { return }
         isApplyingFocus = true
         defer { isApplyingFocus = false }
-        activePaneID = paneID
-        if let bonsplitPane = paneIdByPaneId[paneID],
-           bonsplitController.focusedPaneId != bonsplitPane {
-            bonsplitController.focusPane(bonsplitPane)
+        if activePaneID != paneID { activePaneID = paneID }
+        focusBonsplitPane(forHerdrPane: paneID)
+    }
+
+    /// Records the user-focused pane and asks Herdr to make it active.
+    func setActivePane(_ paneID: String, fromProvider: Bool) {
+        guard panelsByPaneId[paneID] != nil, !isApplyingFocus else { return }
+        projectActivePane(paneID)
+        if !fromProvider {
+            onFocusPaneRequest?(paneID)
         }
     }
 
-    func setActivePane(_ paneID: String, fromProvider: Bool) {
-        guard panelsByPaneId[paneID] != nil, !isApplyingFocus else { return }
-        activePaneID = paneID
-        if let bonsplitPane = paneIdByPaneId[paneID],
-           bonsplitController.focusedPaneId != bonsplitPane {
-            bonsplitController.focusPane(bonsplitPane)
-        }
-        _ = fromProvider
+    /// Records the user-focused pane and asks Herdr to make it active.
+    func focus(pane paneID: String) {
+        setActivePane(paneID, fromProvider: false)
     }
 
     func teardown() {
         isTornDown = true
+        isVisibleForSizing = false
+        sizingPassScheduled = false
+        containerSizePt = nil
+        renderFrameSize = nil
+        lastClaimedClientGrid = nil
+        hostProbeView = nil
         for panel in panelsByPaneId.values {
             onTerminalPanelRemoved?(panel)
             GhosttyApp.terminalSurfaceRegistry.unregister(panel.surface)
