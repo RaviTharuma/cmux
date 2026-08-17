@@ -17,6 +17,8 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
     private var lastPublishedLabels: [NestedNodeID: String]
     /// Provider instance generation last installed; used to invalidate associations.
     private var installedProviderInstanceID: NestedProviderInstanceID?
+    /// Deterministic collection ordering for projection passes.
+    private let ordering = NestedTopologyOrdering()
 
     /// Creates an empty two-pass renderer.
     public init() {
@@ -131,7 +133,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             attachment.providerInstanceID ?? snapshot.provider.providerInstanceID
         let focus = snapshot.focus
 
-        for workspace in NestedTopologyOrdering.sortedWorkspaces(snapshot.workspaces) {
+        for workspace in ordering.sortedWorkspaces(snapshot.workspaces) {
             let label = resolveLabel(
                 nodeID: workspace.id,
                 proposed: workspace.displayTitle,
@@ -157,7 +159,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             )
         }
 
-        for tab in NestedTopologyOrdering.sortedTabs(snapshot.tabs) {
+        for tab in ordering.sortedTabs(snapshot.tabs) {
             let parentID = parentMap.parent(of: tab.id) ?? tab.workspaceID
             let label = resolveLabel(
                 nodeID: tab.id,
@@ -185,7 +187,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
         }
 
         let agentsByPane = Dictionary(grouping: snapshot.agents, by: \.paneID)
-        for pane in NestedTopologyOrdering.sortedPanes(snapshot.panes) {
+        for pane in ordering.sortedPanes(snapshot.panes) {
             let parentID = parentMap.parent(of: pane.id) ?? pane.tabID
             let label = resolveLabel(
                 nodeID: pane.id,
@@ -193,7 +195,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
                 providerInstanceID: providerInstanceID,
                 sessionRawID: pane.id.rawID
             )
-            let primaryAgent = NestedTopologyOrdering.sortedAgents(agentsByPane[pane.id] ?? []).first
+            let primaryAgent = ordering.sortedAgents(agentsByPane[pane.id] ?? []).first
             let agentMetadata = primaryAgent.map {
                 NestedTopologyReadAgentMetadata(
                     id: $0.id,
@@ -221,7 +223,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             )
         }
 
-        for agent in NestedTopologyOrdering.sortedAgents(snapshot.agents) {
+        for agent in ordering.sortedAgents(snapshot.agents) {
             let parentID = parentMap.parent(of: agent.id) ?? agent.paneID
             let label = resolveLabel(
                 nodeID: agent.id,
