@@ -135,6 +135,60 @@ final class RemoteHerdrSessionHost {
         ]
     }
 
+    /// Whether `surfaceId` belongs to a pane panel owned by this session.
+    func containsSurface(_ surfaceId: UUID) -> Bool {
+        for mirror in windowMirrorByTabId.values {
+            if mirror.panelsByPaneId.values.contains(where: { $0.id == surfaceId }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Herdr pane id for a Ghostty surface, if this session owns it.
+    func paneID(forSurfaceId surfaceId: UUID) -> String? {
+        for mirror in windowMirrorByTabId.values {
+            for (paneID, panel) in mirror.panelsByPaneId where panel.id == surfaceId {
+                return paneID
+            }
+        }
+        return nil
+    }
+
+    /// User split from a mirrored pane → `pane.split` (never a local Bonsplit split).
+    @discardableResult
+    func handleMirrorSplitRequested(
+        surfaceId: UUID,
+        vertical: Bool
+    ) async -> Bool {
+        guard let paneID = paneID(forSurfaceId: surfaceId) else { return false }
+        let direction: RemoteHerdrSplitDirection = vertical ? .down : .right
+        do {
+            try await client.splitPane(paneID: paneID, direction: direction)
+            return true
+        } catch {
+            Self.logger.error(
+                "remote-herdr: pane.split failed pane=\(paneID, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+            return false
+        }
+    }
+
+    /// Paste a single-line path/text into the Herdr pane behind `surfaceId`.
+    @discardableResult
+    func pasteIntoMirror(surfaceId: UUID, text: String) async -> Bool {
+        guard !text.isEmpty, !text.contains(where: { $0 == "\n" || $0 == "\r" }) else {
+            return false
+        }
+        guard let paneID = paneID(forSurfaceId: surfaceId) else { return false }
+        do {
+            try await client.sendKeys(paneID: paneID, data: Data(text.utf8))
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Topology apply
 
     private func applySession(
