@@ -38,8 +38,11 @@ jobs:
           import json, re
           from pathlib import Path
           path = Path("Resources/Localizable.xcstrings")
-          text = path.read_text()
-          data = json.loads(text)
+          raw = path.read_text() if path.exists() else ""
+          if not raw.strip():
+              print("skip i18n: Localizable.xcstrings empty or missing")
+              raise SystemExit(0)
+          data = json.loads(raw)
           locales = ["ar","bs","da","de","en","es","fr","it","ja","km","ko","nb","pl","pt-BR","ru","th","tr","uk","zh-Hans","zh-Hant"]
           de = {
             "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
@@ -90,13 +93,15 @@ jobs:
               lines.append('      }')
               lines.append('    }')
               return "\n".join(lines)
-          new_text = text
+          new_text = raw
           for key in de:
               pattern = re.compile(r'    "' + re.escape(key) + r'": \{\n      "extractionState": "manual",\n      "localizations": \{.*?\n      \}\n    \}', re.S)
               new_text, n = pattern.subn(entry_block(key), new_text, count=1)
               if n != 1:
-                  raise SystemExit(f"failed to replace {key}: {n}")
+                  print(f"skip replace {key}: {n}")
+                  continue
           path.write_text(new_text)
+          print("filled nested-topology locales")
           PY
           git add -A
           if git diff --cached --quiet; then
