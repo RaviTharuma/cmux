@@ -229,12 +229,15 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
         continuation: AsyncThrowingStream<NestedTopologyEvent, any Error>.Continuation
     ) async throws {
         let handshake = try await ensureHandshake()
+        // Parameterized status events require pane_id; subscribe for panes known now.
+        let paneIDs = (try? await snapshot().panes.map(\.id.rawID)) ?? []
+        let subscriptions = HerdrProtocol17Compatibility.subscriptions(forPaneIDs: paneIDs)
         let requestID = HerdrJSONRPCRequestID.random(prefix: "cmux-sub")
         let requestObject: [String: Any] = [
             "id": requestID.rawValue,
             "method": "events.subscribe",
             "params": [
-                "subscriptions": HerdrProtocol17Compatibility.defaultSubscriptions,
+                "subscriptions": subscriptions,
             ],
         ]
         let requestData = try Self.encodeJSONObject(requestObject)
@@ -248,7 +251,7 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
         let maxLine = configuration.maxLineUTF8ByteCount
         let maxEvent = configuration.maxEventUTF8ByteCount
         let connectTimeout = configuration.connectTimeout
-        let requestTimeout = configuration.requestTimeout
+        let idleTimeout = configuration.eventIdleTimeout
         let socketPath = configuration.socketPath
 
         let connection = try HerdrUnixSocketConnection(path: socketPath, timeout: connectTimeout)
@@ -267,11 +270,23 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
                         try connection.writeAll(requestData + Data([UInt8(ascii: "\n")]))
                         var reader = HerdrJSONLineReader(maxLineUTF8ByteCount: maxLine)
                         var acknowledged = false
+                        let clock = ContinuousClock()
+                        var lastActivity = clock.now
                         while !Task.isCancelled {
-                            let chunk = try connection.readSome(
-                                maxLength: min(64 * 1024, maxLine),
-                                timeout: requestTimeout
-                            )
+                            let chunk: Data
+                            do {
+                                chunk = try connection.readSome(
+                                    maxLength: min(64 * 1024, maxLine),
+                                    timeout: .seconds(1)
+                                )
+                            } catch NestedTopologyProviderError.requestTimeout {
+                                // Poll slice timed out; keep waiting until the idle bound elapses.
+                                if clock.now - lastActivity >= idleTimeout {
+                                    throw NestedTopologyProviderError.requestTimeout
+                                }
+                                continue
+                            }
+                            lastActivity = clock.now
                             let lines = try reader.append(chunk)
                             for line in lines {
                                 if acknowledged, line.utf8.count > maxEvent {
