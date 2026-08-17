@@ -57,7 +57,14 @@ jobs:
             git checkout --theirs Sources/AppDelegate.swift
             python3 /tmp/resolve-appdelegate-merge.py
             git add Sources/AppDelegate.swift
+          fi
+          # GITHUB_TOKEN cannot update workflow files. Keep the pre-merge
+          # workflow blobs so the merge commit can be pushed.
+          git checkout HEAD -- .github/workflows
+          git add .github/workflows
+          if ! git diff --cached --quiet || [ -f .git/MERGE_HEAD ]; then
             git commit -m "Merge manaflow-ai/cmux main into nested-topology branch."
           fi
           git push origin "HEAD:cursor/nested-topology-herdr-v1-becf"
           git log -1 --oneline
+          git rev-parse HEAD
