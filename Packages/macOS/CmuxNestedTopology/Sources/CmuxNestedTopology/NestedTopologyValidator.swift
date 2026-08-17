@@ -180,16 +180,15 @@ public struct NestedTopologyValidator: Sendable {
             limit: limits.maxProviderRawStatusUTF8ByteCount
         )
         if let normalized = NestedAgentStatus.normalized(from: providerRawStatus),
-           normalized != status,
-           status != .unknown || normalized != .unknown
+           normalized != .unknown,
+           normalized != status
         {
-            // Allow explicit unknown even when raw maps to a known value only when
-            // the caller intentionally chose unknown for a truly unknown token.
-            if normalized != .unknown && status != normalized {
-                throw NestedTopologyValidationError.invalidStatus(
-                    reason: "status \(status.rawValue) does not match provider_raw_status"
-                )
-            }
+            // A token that normalizes to `.unknown` accepts any declared status.
+            // A known normalized token must match the declared status exactly
+            // (including rejecting `.unknown` when the provider token is known).
+            throw NestedTopologyValidationError.invalidStatus(
+                reason: "status \(status.rawValue) does not match provider_raw_status"
+            )
         }
     }
 
