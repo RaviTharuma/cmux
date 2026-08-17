@@ -62,6 +62,31 @@ public struct NestedTopologySnapshot: Hashable, Codable, Sendable {
         self.focus = focus
     }
 
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let encodingVersion = try container.decodeIfPresent(UInt8.self, forKey: .encodingVersion)
+            ?? NestedTopologySnapshot.currentEncodingVersion
+        let attachmentID = try container.decode(UUID.self, forKey: .attachmentID)
+        let hostStableSurfaceID = try container.decode(UUID.self, forKey: .hostStableSurfaceID)
+        let provider = try container.decode(NestedProviderHandshake.self, forKey: .provider)
+        let workspaces = try container.decodeIfPresent([NestedWorkspaceNode].self, forKey: .workspaces) ?? []
+        let tabs = try container.decodeIfPresent([NestedTabNode].self, forKey: .tabs) ?? []
+        let panes = try container.decodeIfPresent([NestedPaneNode].self, forKey: .panes) ?? []
+        let agents = try container.decodeIfPresent([NestedAgentNode].self, forKey: .agents) ?? []
+        let focus = try container.decode(NestedFocus.self, forKey: .focus)
+        self.init(
+            encodingVersion: encodingVersion,
+            attachmentID: attachmentID,
+            hostStableSurfaceID: hostStableSurfaceID,
+            provider: provider,
+            workspaces: workspaces,
+            tabs: tabs,
+            panes: panes,
+            agents: agents,
+            focus: focus
+        )
+    }
+
     /// Structural identity excluding display titles.
     public var structuralIdentity: NestedTopologyStructuralIdentity {
         NestedTopologyStructuralIdentity(

@@ -42,8 +42,8 @@ public enum NestedEndpointSecurityError: Error, Hashable, Sendable, LocalizedErr
             return "Nested provider socket path is empty."
         case .notAbsolutePath:
             return "Nested provider socket path must be absolute."
-        case .pathTooLong(let maxUTF8ByteCount):
-            return "Nested provider socket path exceeds \(maxUTF8ByteCount) UTF-8 bytes."
+        case .pathTooLong:
+            return "Nested provider socket path is too long."
         case .illegalPathBytes:
             return "Nested provider socket path contains illegal bytes."
         case .symlinkRejected:
@@ -52,12 +52,12 @@ public enum NestedEndpointSecurityError: Error, Hashable, Sendable, LocalizedErr
             return "Nested provider socket path does not exist."
         case .notUnixSocket:
             return "Nested provider endpoint is not a Unix-domain socket."
-        case .wrongOwner(let expected, let actual):
-            return "Nested provider socket owner UID \(actual) does not match expected UID \(expected)."
-        case .permissiveMode(let mode):
-            return "Nested provider socket mode \(String(mode, radix: 8)) allows group/other access."
-        case .inaccessible(let errnoCode):
-            return "Nested provider socket path is inaccessible (errno \(errnoCode))."
+        case .wrongOwner:
+            return "Nested provider socket is not owned by this process user."
+        case .permissiveMode:
+            return "Nested provider socket permissions allow group or other access."
+        case .inaccessible:
+            return "Nested provider socket path is inaccessible."
         case .identityMismatch:
             return "Nested provider socket file identity changed around connect."
         }

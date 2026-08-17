@@ -34,15 +34,20 @@ public struct NestedParentMap: Hashable, Codable, Sendable {
 
     /// Removes `root` and every descendant reachable through this map.
     public mutating func removeSubtree(rootedAt root: NestedNodeID) {
+        var childrenByParent: [NestedNodeID: [NestedNodeID]] = [:]
+        for (child, parent) in parentsByChild {
+            childrenByParent[parent, default: []].append(child)
+        }
+
         var toRemove: Set<NestedNodeID> = [root]
-        var changed = true
-        while changed {
-            changed = false
-            for (child, parent) in parentsByChild where toRemove.contains(parent) && !toRemove.contains(child) {
-                toRemove.insert(child)
-                changed = true
+        var pending = [root]
+        while let parent = pending.popLast() {
+            for child in childrenByParent[parent, default: []]
+            where toRemove.insert(child).inserted {
+                pending.append(child)
             }
         }
+
         parentsByChild = parentsByChild.filter { !toRemove.contains($0.key) }
     }
 
