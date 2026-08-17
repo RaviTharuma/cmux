@@ -88,7 +88,6 @@ final class NestedTopologyController {
     func scheduleSidebarRefresh() {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
             guard let self, !Task.isCancelled else { return }
             await self.refreshSidebarSnapshots()
         }
@@ -143,7 +142,7 @@ final class NestedTopologyController {
                     )
                 )
             } catch {
-                Self.logger.error("nested focus failed: \(String(describing: error), privacy: .public)")
+                Self.logger.error("nested focus failed: \((error as? NestedAttachmentError)?.telemetryErrorClass ?? "focus_failed", privacy: .private)")
             }
         }
     }
@@ -206,8 +205,19 @@ final class NestedTopologyController {
     }
 
     /// Persistence intent for a host surface (session snapshot capture).
+    ///
+    /// Prefer ``freshAttachmentIntent(for:)`` when the caller can await; this
+    /// sync path returns the last coordinator-synced cache entry.
     func attachmentIntent(for hostStableSurfaceID: UUID) -> NestedAttachmentIntentDescriptor? {
         guard Self.isEnabled else { return nil }
+        return attachmentIntentsByHostSurfaceID[hostStableSurfaceID]
+    }
+
+    /// Reads the coordinator's current attachment intent (fresh, not debounce-cached).
+    func freshAttachmentIntent(for hostStableSurfaceID: UUID) async -> NestedAttachmentIntentDescriptor? {
+        guard Self.isEnabled else { return nil }
+        let attachments = await coordinator.allAttachments()
+        rebuildSidebarCache(from: attachments)
         return attachmentIntentsByHostSurfaceID[hostStableSurfaceID]
     }
 
