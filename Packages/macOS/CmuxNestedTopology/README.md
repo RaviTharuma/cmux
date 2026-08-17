@@ -33,11 +33,16 @@ This package owns:
   - revalidate + identity compare + fresh snapshot on restore
   - disconnected + confirmation when identity proof is unavailable/mismatched
 
-It does **not** mutate cmux `Workspace` / Bonsplit ownership of provider panes,
-persist nested node snapshots / output / credentials into session manifests, or
-implement rename / send-input / split / close (separate follow-up PRs). Herdr
-descendants remain virtual under one host surface; they are never mirrored into
-Ghostty/Bonsplit PTYs.
+Window-mirror reconcile (`RemoteHerdrWindowMirror`) plus the host-agnostic
+Bonsplit impose planner (`RemoteHerdrImpose` / `RemoteHerdrImposePlan`) live
+in this package. AppKit still applies the plan (Ghostty `TerminalPanel`,
+divider-drag UI). The planner owns the ssh-tmux contract: right-associated
+binary tree, targeted leaf expand/remove, tmux +1 divider-cell fraction,
+`plan(w) <= w`, and drag-hold/resolve.
+
+The package does **not** persist nested node snapshots / output / credentials
+into session manifests. Sidebar descendants stay virtual until the host
+applies an impose plan onto Bonsplit.
 
 ## Restore semantics (PR 6)
 
