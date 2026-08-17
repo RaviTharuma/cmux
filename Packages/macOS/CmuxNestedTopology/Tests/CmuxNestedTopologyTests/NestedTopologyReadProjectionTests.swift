@@ -248,6 +248,36 @@ struct NestedTopologyReadProjectionTests {
         #expect(filtered.attachments[0].hostStableSurfaceID == NestedTopologyFixtures.hostSurfaceID)
     }
 
+    @Test func titleLockSurvivesProjectionOfASecondAttachment() throws {
+        var service = NestedTopologyReadService()
+        let snapshotA = NestedTopologyFixtures.snapshot(instance: NestedTopologyFixtures.instanceA)
+        let snapshotB = NestedTopologyFixtures.snapshot(instance: NestedTopologyFixtures.instanceB)
+
+        let key = NestedAssociationKey(
+            nodeID: snapshotA.panes[0].id,
+            sessionRawID: snapshotA.panes[0].id.rawID,
+            providerInstanceGeneration: NestedTopologyFixtures.instanceA
+        )
+        service.lockTitle(for: key, title: "Locked Pane", authority: .user)
+
+        var attachmentA = liveAttachment(snapshot: snapshotA)
+        attachmentA.providerInstanceID = NestedTopologyFixtures.instanceA
+
+        var attachmentB = liveAttachment(snapshot: snapshotB)
+        attachmentB.attachmentID = UUID(uuidString: "55555555-5555-5555-5555-555555555555")!
+        attachmentB.hostStableSurfaceID = UUID(uuidString: "66666666-6666-6666-6666-666666666666")!
+        attachmentB.providerInstanceID = NestedTopologyFixtures.instanceB
+
+        _ = service.list(attachments: [attachmentA, attachmentB])
+        let second = service.list(attachments: [attachmentA, attachmentB])
+
+        let projectedA = try #require(
+            second.attachments.first { $0.providerInstanceID == NestedTopologyFixtures.instanceA }
+        )
+        let paneLabel = try #require(projectedA.nodes.first { $0.id.kind == .pane }?.label)
+        #expect(paneLabel == "Locked Pane")
+    }
+
     private func liveAttachment(snapshot: NestedTopologySnapshot) -> NestedAttachmentRecord {
         NestedAttachmentRecord(
             attachmentID: NestedTopologyFixtures.attachmentID,
