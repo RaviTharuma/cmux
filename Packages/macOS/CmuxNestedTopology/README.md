@@ -1,8 +1,10 @@
 # CmuxNestedTopology
 
 Provider-neutral nested topology model, Herdr socket adapter, secure
-attachment lifecycle, read projection, capability-gated focus, and **session
-restore semantics** for cmux (PR 1–6 of the native Herdr nested-topology plan).
+attachment lifecycle, read projection, capability-gated focus, session
+restore semantics, reconnect scheduling, and RemoteHerdr session/window
+mirroring for cmux (native Herdr nested-topology plan, including post–PR-6
+mirroring helpers).
 
 ## Scope
 
@@ -15,6 +17,7 @@ This package owns:
 - in-memory association, parent-map, and title-lock values
 - provider-neutral ``NestedTopologyProviderClient`` (read + focus)
 - ``HerdrNestedTopologyClient`` (newline-delimited JSON Unix socket; no `herdr` CLI)
+- ``NestedReconnectScheduler`` for cancellation-aware reconnect backoff
 - ``NestedTopologyAttachmentCoordinator`` — opt-in attachment lifecycle, endpoint
   security validation, host move/close hooks, plugin single-writer handoff,
   capability-gated ``focusNode``, and ``restoreFromIntent``
@@ -32,17 +35,14 @@ This package owns:
   - versioned ``NestedAttachmentIntentDescriptor`` (intent only)
   - revalidate + identity compare + fresh snapshot on restore
   - disconnected + confirmation when identity proof is unavailable/mismatched
+- **RemoteHerdr mirroring**
+  - ``RemoteHerdrSessionMirror`` / ``RemoteHerdrWindowMirror`` / layout + sizing helpers
+  - capability-gated pane I/O (`pane.send` / `split` / `resize` / `close` / `read`)
 
-Window-mirror reconcile (`RemoteHerdrWindowMirror`) plus the host-agnostic
-Bonsplit impose planner (`RemoteHerdrImpose` / `RemoteHerdrImposePlan`) live
-in this package. AppKit still applies the plan (Ghostty `TerminalPanel`,
-divider-drag UI). The planner owns the ssh-tmux contract: right-associated
-binary tree, targeted leaf expand/remove, tmux +1 divider-cell fraction,
-`plan(w) <= w`, and drag-hold/resolve.
-
-The package does **not** persist nested node snapshots / output / credentials
-into session manifests. Sidebar descendants stay virtual until the host
-applies an impose plan onto Bonsplit.
+It does **not** mutate cmux `Workspace` / Bonsplit ownership of provider panes,
+persist nested node snapshots / output / credentials into session manifests, or
+promote provider descendants into Ghostty/Bonsplit PTYs. Herdr descendants remain
+virtual under one host surface.
 
 ## Restore semantics (PR 6)
 
@@ -53,8 +53,16 @@ Persist **attachment intent**, never live topology:
 | provider kind | nested node snapshot / tree |
 | reattach policy | pane/agent output |
 | non-secret endpoint locator (approved path) | tokens / bearer credentials |
-| last verified provider instance ID | plugin association state files/records |
+| last verified provider instance ID (connection-scoped on protocol 17) | plugin association state files/records |
 | last verified socket file identity | |
+
+**Protocol 17 identity note:** Herdr protocol 17 does not advertise a durable
+server instance id. ``NestedProviderInstanceID`` is minted per connection unless
+the provider returns `instance_id`. The persisted “last verified provider
+instance ID” therefore cannot prove continuity after reconnect on protocol 17;
+unattended auto-reattach also requires a pinned socket file identity, and
+otherwise restore leaves the attachment ``disconnected`` with
+``pendingRestoreIntent`` until ``confirmPendingRestore``.
 
 On `Workspace.restoreSessionSnapshot` (app wiring):
 
