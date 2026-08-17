@@ -1,9 +1,6 @@
 public import Foundation
 
 /// One session-level host verb. Order in a list is load-bearing.
-///
-/// Twin of plugin ``SessionAction``. Lane B owns this file — do not fold it
-/// into #10045 while CodeRabbit (N/5) is in flight.
 public struct RemoteHerdrSessionAction: Hashable, Sendable {
     /// Verb name (`create_tab`, `close_tab`, `reorder_tabs`, …).
     public var op: String
