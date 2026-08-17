@@ -31,6 +31,22 @@ public struct RemoteHerdrLayoutNode: Hashable, Sendable, Codable {
     }
 
     public init(from decoder: any Decoder) throws {
+        try self.init(
+            from: decoder,
+            depth: 0,
+            maxDepth: NestedTopologyLimits.default.maxLayoutTreeDepth
+        )
+    }
+
+    private init(from decoder: any Decoder, depth: Int, maxDepth: Int) throws {
+        guard depth <= maxDepth else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "layout tree exceeds max depth \(maxDepth)"
+                )
+            )
+        }
         let container = try decoder.container(keyedBy: CodingKeys.self)
         width = max(1, try container.decodeIfPresent(Int.self, forKey: .width) ?? 1)
         height = max(1, try container.decodeIfPresent(Int.self, forKey: .height) ?? 1)
@@ -40,16 +56,14 @@ public struct RemoteHerdrLayoutNode: Hashable, Sendable, Codable {
             content = .pane(paneID)
         } else if let paneInt = try container.decodeIfPresent(Int.self, forKey: .pane) {
             content = .pane(String(paneInt))
-        } else if let children = try container.decodeIfPresent(
-            [RemoteHerdrLayoutNode].self,
-            forKey: .horizontal
-        ) {
-            content = .horizontal(children)
-        } else if let children = try container.decodeIfPresent(
-            [RemoteHerdrLayoutNode].self,
-            forKey: .vertical
-        ) {
-            content = .vertical(children)
+        } else if container.contains(.horizontal) {
+            content = .horizontal(
+                try Self.decodeChildren(from: container, forKey: .horizontal, depth: depth, maxDepth: maxDepth)
+            )
+        } else if container.contains(.vertical) {
+            content = .vertical(
+                try Self.decodeChildren(from: container, forKey: .vertical, depth: depth, maxDepth: maxDepth)
+            )
         } else {
             throw DecodingError.dataCorrupted(
                 .init(
@@ -58,6 +72,23 @@ public struct RemoteHerdrLayoutNode: Hashable, Sendable, Codable {
                 )
             )
         }
+    }
+
+    private static func decodeChildren(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        depth: Int,
+        maxDepth: Int
+    ) throws -> [RemoteHerdrLayoutNode] {
+        var unkeyed = try container.nestedUnkeyedContainer(forKey: key)
+        var children: [RemoteHerdrLayoutNode] = []
+        while !unkeyed.isAtEnd {
+            let childDecoder = try unkeyed.superDecoder()
+            children.append(
+                try RemoteHerdrLayoutNode(from: childDecoder, depth: depth + 1, maxDepth: maxDepth)
+            )
+        }
+        return children
     }
 
     public func encode(to encoder: any Encoder) throws {
