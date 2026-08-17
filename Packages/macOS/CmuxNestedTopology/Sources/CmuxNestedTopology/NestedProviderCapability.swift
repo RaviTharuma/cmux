@@ -14,6 +14,12 @@ public enum NestedProviderCapability: String, Codable, Sendable, Hashable, CaseI
     case paneInputV1 = "pane.input.v1"
     /// Provider can split panes.
     case paneSplitV1 = "pane.split.v1"
+    /// Provider can resize a pane grid (tmux ``resize-pane`` analogue).
+    case paneResizeV1 = "pane.resize.v1"
+    /// Provider can close a pane (tmux ``kill-pane`` analogue).
+    case paneCloseV1 = "pane.close.v1"
+    /// Provider can read pane output (tmux ``%output`` analogue).
+    case paneReadV1 = "pane.read.v1"
     /// Provider supports agent prompting.
     case agentPromptV1 = "agent.prompt.v1"
 }

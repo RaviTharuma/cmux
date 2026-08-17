@@ -10,4 +10,6 @@ public enum NestedTopologyPublicCapability: String, Codable, Sendable, Hashable,
     case readV1 = "nested_topology.read.v1"
     /// Capability-gated nested focus (`nested.node.focus`).
     case focusV1 = "nested_topology.focus.v1"
+    /// ssh-tmux-style Herdr window mirror (real tabs/panes, layout, I/O).
+    case windowMirrorV1 = "nested_topology.window_mirror.v1"
 }

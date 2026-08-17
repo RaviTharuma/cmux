@@ -525,7 +525,11 @@ import Testing
         #expect(NestedTopologyPublicCapability.focusV1.rawValue == "nested_topology.focus.v1")
         #expect(
             NestedTopologyPublicCapability.allCases.map(\.rawValue).sorted()
-                == ["nested_topology.focus.v1", "nested_topology.read.v1"]
+                == [
+                    "nested_topology.focus.v1",
+                    "nested_topology.read.v1",
+                    "nested_topology.window_mirror.v1",
+                ]
         )
     }
 }

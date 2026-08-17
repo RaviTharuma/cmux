@@ -29,6 +29,20 @@ public struct HerdrProtocol17Compatibility: Sendable {
         ]
     )
 
+    /// Capabilities required to copy ``RemoteTmuxWindowMirror`` for Herdr (PR7).
+    public static let mirrorCapabilities = NestedCapabilitySet(
+        capabilities: [
+            .topologySnapshotV1,
+            .topologyEventsV1,
+            .topologyFocusV1,
+            .paneInputV1,
+            .paneSplitV1,
+            .paneResizeV1,
+            .paneCloseV1,
+            .paneReadV1,
+        ]
+    )
+
     /// Default topology event subscriptions for the read-only adapter.
     public static let defaultSubscriptions: [[String: String]] = [
         ["type": "workspace.created"],
@@ -778,6 +792,8 @@ public struct HerdrWireSessionSnapshot: Hashable, Sendable {
     public var tabs: [HerdrWireTab]
     public var panes: [HerdrWirePane]
     public var agents: [HerdrWireAgent]
+    /// Tab id → layout tree when Herdr publishes `layouts` (PR7 window mirror).
+    public var layouts: [String: RemoteHerdrLayoutNode]
 }
 
 /// Wire workspace record.
@@ -1004,12 +1020,11 @@ extension HerdrWireResult: Decodable {
         case "subscription_started":
             self = .subscriptionStarted
         case "ok", "workspace_info", "tab_info", "pane_info", "agent_info":
-            // Focus / mutation success shapes. Payload fields are ignored by the
-            // topology client — callers reconcile from events / resnapshot.
-            self = .other(type: type, object: [:])
+            // Focus / mutation success shapes. Keep payload fields for pane.read.
+            self = .other(type: type, object: herdrPayloadObject(from: decoder))
         default:
             // Tolerate other additive success types without requiring a full schema.
-            self = .other(type: type, object: [:])
+            self = .other(type: type, object: herdrPayloadObject(from: decoder))
         }
     }
 }
@@ -1039,9 +1054,35 @@ extension HerdrWireSessionSnapshot: Decodable {
         tabs = try container.decodeIfPresent([HerdrWireTab].self, forKey: .tabs) ?? []
         panes = try container.decodeIfPresent([HerdrWirePane].self, forKey: .panes) ?? []
         agents = try container.decodeIfPresent([HerdrWireAgent].self, forKey: .agents) ?? []
-        // layouts intentionally ignored for the read-only topology adapter.
-        _ = try container.decodeIfPresent([AnySendableJSON].self, forKey: .layouts)
+        layouts = Self.decodeLayouts(container)
     }
+
+    /// Accepts a tab-id map, a `[{tab_id, layout}]` list, or an empty array.
+    private static func decodeLayouts(
+        _ container: KeyedDecodingContainer<CodingKeys>
+    ) -> [String: RemoteHerdrLayoutNode] {
+        if let dict = try? container.decode([String: RemoteHerdrLayoutNode].self, forKey: .layouts) {
+            return dict
+        }
+        if let named = try? container.decode([RemoteHerdrTabLayout].self, forKey: .layouts) {
+            var mapped: [String: RemoteHerdrLayoutNode] = [:]
+            for item in named where !item.tabID.isEmpty {
+                mapped[item.tabID] = item.layout
+            }
+            return mapped
+        }
+        return [:]
+    }
+}
+
+/// Remaining fields of a tagged Herdr result object (everything except `type`).
+private func herdrPayloadObject(from decoder: any Decoder) -> [String: AnySendableJSON] {
+    guard let json = try? AnySendableJSON(from: decoder), case .object(let object) = json else {
+        return [:]
+    }
+    var payload = object
+    payload.removeValue(forKey: "type")
+    return payload
 }
 
 extension HerdrWireEventEnvelope: Decodable {
