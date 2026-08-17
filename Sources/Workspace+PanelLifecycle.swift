@@ -472,14 +472,9 @@ extension Workspace {
         }
 
         if let nestedHostStableSurfaceID, NestedTopologyController.isEnabled {
-            nestedHostSurfaceCloseTasks[nestedHostStableSurfaceID]?.cancel()
-            let closeTask = Task { @MainActor [weak self] in
-                await AppDelegate.shared?.nestedTopologyController.hostSurfaceClosed(
-                    hostStableSurfaceID: nestedHostStableSurfaceID
-                )
-                self?.nestedHostSurfaceCloseTasks[nestedHostStableSurfaceID] = nil
-            }
-            nestedHostSurfaceCloseTasks[nestedHostStableSurfaceID] = closeTask
+            AppDelegate.shared?.nestedTopologyController.enqueueHostSurfaceClosed(
+                hostStableSurfaceID: nestedHostStableSurfaceID
+            )
         }
 
         let shouldPreserveRemoteDisconnectOnClose =

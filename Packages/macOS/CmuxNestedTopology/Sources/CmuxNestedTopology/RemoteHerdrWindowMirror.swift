@@ -101,6 +101,7 @@ public enum RemoteHerdrWindowMirror {
         let previousIDs = previous?.paneIDs ?? []
         let previousSet = Set(previousIDs)
         let created = live.filter { !previousSet.contains($0) }
+        let createdSet = Set(created)
         let closed = previousIDs.filter { !liveSet.contains($0) }
         let kept = live.filter { previousSet.contains($0) }
         let structureChanged: Bool
@@ -138,7 +139,7 @@ public enum RemoteHerdrWindowMirror {
             structureChanged: structureChanged,
             titleChanged: titleChanged,
             focusPaneID: focus,
-            splitSpecs: window.layout.splitSpecs.filter { created.contains($0.paneID) },
+            splitSpecs: window.layout.splitSpecs.filter { createdSet.contains($0.paneID) },
             renderedLayout: window.renderedLayout
         )
         return (state, result)

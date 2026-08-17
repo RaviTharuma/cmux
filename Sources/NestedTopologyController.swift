@@ -33,6 +33,7 @@ final class NestedTopologyController {
     private var readService = NestedTopologyReadService()
     private var refreshTask: Task<Void, Never>?
     private var restoreTasks: [UUID: Task<Void, Never>] = [:]
+    private var closeTasks: [UUID: Task<Void, Never>] = [:]
     private let refreshBridge = NestedTopologyRefreshBridge()
 
     /// Synchronous read of the nested-topology beta flag (socket/AppKit paths).
@@ -188,7 +189,16 @@ final class NestedTopologyController {
         expandedHostSurfaceIDs.remove(hostStableSurfaceID)
         sidebarSubtreesByHostSurfaceID.removeValue(forKey: hostStableSurfaceID)
         attachmentIntentsByHostSurfaceID.removeValue(forKey: hostStableSurfaceID)
+        closeTasks[hostStableSurfaceID] = nil
         scheduleSidebarRefresh()
+    }
+
+    /// Enqueues a cancellable host-surface close so panel teardown owns the task.
+    func enqueueHostSurfaceClosed(hostStableSurfaceID: UUID) {
+        closeTasks[hostStableSurfaceID]?.cancel()
+        closeTasks[hostStableSurfaceID] = Task { @MainActor [weak self] in
+            await self?.hostSurfaceClosed(hostStableSurfaceID: hostStableSurfaceID)
+        }
     }
 
     /// Tears down all attachments (app/window teardown).
@@ -197,6 +207,10 @@ final class NestedTopologyController {
             task.cancel()
         }
         restoreTasks.removeAll()
+        for (_, task) in closeTasks {
+            task.cancel()
+        }
+        closeTasks.removeAll()
         await coordinator.teardown()
         expandedHostSurfaceIDs = []
         sidebarSubtreesByHostSurfaceID = [:]
@@ -206,10 +220,14 @@ final class NestedTopologyController {
 
     /// Persistence intent for a host surface (session snapshot capture).
     ///
-    /// Prefer ``freshAttachmentIntent(for:)`` when the caller can await; this
-    /// sync path returns the last coordinator-synced cache entry.
+    /// Prefers the coordinator's published intent so a stale MainActor cache
+    /// cannot persist an empty or outdated attachment.
     func attachmentIntent(for hostStableSurfaceID: UUID) -> NestedAttachmentIntentDescriptor? {
         guard Self.isEnabled else { return nil }
+        if let published = coordinator.persistenceIntent(for: hostStableSurfaceID) {
+            attachmentIntentsByHostSurfaceID[hostStableSurfaceID] = published
+            return published
+        }
         return attachmentIntentsByHostSurfaceID[hostStableSurfaceID]
     }
 

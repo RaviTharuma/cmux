@@ -47,20 +47,20 @@ public enum NestedTopologyProviderError: Error, Hashable, Sendable, LocalizedErr
             return "Nested provider event exceeded \(maxUTF8ByteCount) UTF-8 bytes."
         case .invalidUTF8:
             return "Nested provider payload was not valid UTF-8."
-        case .malformedJSON(let detail):
-            return "Nested provider returned malformed JSON: \(detail)"
-        case .responseIDMismatch(let expected, let actual):
-            return "Nested provider response id mismatch (expected \(expected), got \(actual))."
-        case .providerError(let code, let message):
-            return "Nested provider error \(code): \(message)"
-        case .missingRequiredField(let field):
-            return "Nested provider payload missing required field '\(field)'."
-        case .unsupportedProtocol(let number):
-            return "Unsupported nested provider protocol \(number)."
+        case .malformedJSON:
+            return "Nested provider returned malformed JSON."
+        case .responseIDMismatch:
+            return "Nested provider response id mismatch."
+        case .providerError:
+            return "Nested provider returned an error."
+        case .missingRequiredField:
+            return "Nested provider payload is missing a required field."
+        case .unsupportedProtocol:
+            return "Unsupported nested provider protocol."
         case .cancelled:
             return "Nested provider operation cancelled."
-        case .transport(let detail):
-            return "Nested provider transport failure: \(detail)"
+        case .transport:
+            return "Nested provider transport failure."
         }
     }
 }

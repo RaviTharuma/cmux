@@ -2028,6 +2028,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                     surfaceResumeBindingIndex: resumeIndexes.surfaceResumeBindingIndex
                 )
                 ClosedItemHistoryStore.shared.flushPendingSaves()
+                await self.nestedTopologyController.teardown()
                 self.terminationWatchdog.arm()
                 self.replyToTerminateOnce(true)
             }
@@ -2064,6 +2065,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                         removeWhenEmpty: false
                     )
                     ClosedItemHistoryStore.shared.flushPendingSaves()
+                    await self.nestedTopologyController.teardown()
                     self.terminationWatchdog.arm()
                     self.replyToTerminateOnce(true)
                     return
@@ -2263,7 +2265,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         sentryStopMemoryContextRefresh()
         // Plain quit detaches local ssh clients; explicit close already killed marked sessions.
         remoteTmuxController.detachAll()
-        Task { await nestedTopologyController.teardown() }
+        // Nested topology teardown is awaited from the confirmed-termination
+        // cleanup task so session snapshots see published intents first.
         // Best-effort presence goodbye; unclean exits are covered by the
         // service's missed-heartbeat timeout.
         PresenceHeartbeatClient.shared.appWillTerminate()

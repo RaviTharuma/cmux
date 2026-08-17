@@ -93,7 +93,7 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
         case .providerInstanceMismatch: return "provider_instance_mismatch"
         case .nodeNotFound: return "node_not_found"
         case .wrongHostSurface: return "wrong_host_surface"
-        case .restoreRequiresConfirmation(let reason): return "restore_requires_confirmation.\(reason)"
+        case .restoreRequiresConfirmation: return "restore_requires_confirmation"
         case .restoreSocketIdentityChanged: return "restore_socket_identity_changed"
         case .restoreProviderUnavailable: return "restore_provider_unavailable"
         }

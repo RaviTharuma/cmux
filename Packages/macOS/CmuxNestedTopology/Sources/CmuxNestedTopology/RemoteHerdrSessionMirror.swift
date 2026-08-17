@@ -62,9 +62,9 @@ public enum RemoteHerdrSessionMirror {
         layouts: [String: RemoteHerdrLayoutNode] = [:],
         zoomedPaneIDs: Set<String> = []
     ) -> [RemoteHerdrWindow] {
-        snapshot.tabs.map { tab in
-            let panes = snapshot.panes.filter { $0.tabID == tab.id }
-                .sorted { lhs, rhs in
+        let panesByTab = Dictionary(grouping: snapshot.panes, by: \.tabID)
+        return snapshot.tabs.map { tab in
+            let panes = (panesByTab[tab.id] ?? []).sorted { lhs, rhs in
                     if lhs.orderIndex != rhs.orderIndex {
                         return lhs.orderIndex < rhs.orderIndex
                     }

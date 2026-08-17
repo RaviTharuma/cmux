@@ -36,6 +36,7 @@ public actor NestedTopologyAttachmentCoordinator {
     private let clientConfigurationDefaults: ClientConfigurationDefaults
     private let telemetrySink: (@Sendable (NestedAttachmentTelemetryEvent) -> Void)?
     private let environmentMirrorSink: (@Sendable (String) -> Void)?
+    private let persistenceIntents = NestedPersistenceIntentBox()
 
     /// Defaults applied when constructing Herdr client configurations.
     public struct ClientConfigurationDefaults: Hashable, Sendable {
@@ -94,6 +95,15 @@ public actor NestedTopologyAttachmentCoordinator {
     /// Returns the attachment for a host stable surface, if any.
     public func attachment(for hostStableSurfaceID: UUID) -> NestedAttachmentRecord? {
         attachments[hostStableSurfaceID]
+    }
+
+    /// Fresh persistence intent published on every attach/detach/restore mutation.
+    ///
+    /// Safe to read from session-snapshot capture without awaiting the actor.
+    public nonisolated func persistenceIntent(
+        for hostStableSurfaceID: UUID
+    ) -> NestedAttachmentIntentDescriptor? {
+        persistenceIntents.intent(for: hostStableSurfaceID)
     }
 
     /// All retained attachments in deterministic host-surface order.
@@ -739,6 +749,7 @@ public actor NestedTopologyAttachmentCoordinator {
             await detach(hostStableSurfaceID: id, reason: .hostWindowTeardown)
         }
         proposals.removeAll()
+        publishPersistenceIntents()
     }
 
     /// Resolves a live attachment for action routing (PR5). Stale/disconnected reject.
@@ -1188,7 +1199,18 @@ public actor NestedTopologyAttachmentCoordinator {
     }
 
     private func emit(_ event: NestedAttachmentTelemetryEvent) {
+        publishPersistenceIntents()
         telemetrySink?(event)
+    }
+
+    private func publishPersistenceIntents() {
+        var next: [UUID: NestedAttachmentIntentDescriptor] = [:]
+        for (hostStableSurfaceID, record) in attachments {
+            if let intent = record.sessionPersistenceIntent ?? record.pendingRestoreIntent {
+                next[hostStableSurfaceID] = intent
+            }
+        }
+        persistenceIntents.replace(next)
     }
 }
 
