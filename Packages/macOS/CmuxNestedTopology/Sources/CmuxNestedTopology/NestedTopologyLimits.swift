@@ -22,6 +22,8 @@ public struct NestedTopologyLimits: Hashable, Codable, Sendable {
     public var maxProviderInstanceIDUTF8ByteCount: Int
     /// Maximum UTF-8 byte length of a provider version string.
     public var maxProviderVersionUTF8ByteCount: Int
+    /// Maximum nesting depth for a Herdr layout tree (leaf depth 0).
+    public var maxLayoutTreeDepth: Int
 
     /// Default production limits for nested topology ingestion.
     public static let `default` = NestedTopologyLimits(
@@ -34,7 +36,8 @@ public struct NestedTopologyLimits: Hashable, Codable, Sendable {
         maxDisplayTitleUTF8ByteCount: 512,
         maxProviderRawStatusUTF8ByteCount: 64,
         maxProviderInstanceIDUTF8ByteCount: 128,
-        maxProviderVersionUTF8ByteCount: 64
+        maxProviderVersionUTF8ByteCount: 64,
+        maxLayoutTreeDepth: 64
     )
 
     /// Creates topology limits.
@@ -48,7 +51,8 @@ public struct NestedTopologyLimits: Hashable, Codable, Sendable {
         maxDisplayTitleUTF8ByteCount: Int,
         maxProviderRawStatusUTF8ByteCount: Int,
         maxProviderInstanceIDUTF8ByteCount: Int,
-        maxProviderVersionUTF8ByteCount: Int
+        maxProviderVersionUTF8ByteCount: Int,
+        maxLayoutTreeDepth: Int = 64
     ) {
         self.maxWorkspaces = maxWorkspaces
         self.maxTabs = maxTabs
@@ -60,5 +64,6 @@ public struct NestedTopologyLimits: Hashable, Codable, Sendable {
         self.maxProviderRawStatusUTF8ByteCount = maxProviderRawStatusUTF8ByteCount
         self.maxProviderInstanceIDUTF8ByteCount = maxProviderInstanceIDUTF8ByteCount
         self.maxProviderVersionUTF8ByteCount = maxProviderVersionUTF8ByteCount
+        self.maxLayoutTreeDepth = maxLayoutTreeDepth
     }
 }

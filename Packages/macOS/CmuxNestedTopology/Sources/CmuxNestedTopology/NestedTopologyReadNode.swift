@@ -82,7 +82,7 @@ public struct NestedTopologyReadNode: Hashable, Codable, Sendable {
         self.metadata = Self.boundedMetadata(metadata)
     }
 
-    /// Accessibility / VoiceOver label for sidebar rows.
+    /// Accessibility / VoiceOver label for sidebar rows (fixed English tokens; no paths).
     public var accessibilityLabel: String {
         var parts = [id.kind.rawValue, label]
         if focused {

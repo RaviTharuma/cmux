@@ -13,10 +13,13 @@ public struct NestedTopologyReadService: Sendable {
         self.renderer = renderer
     }
 
-    /// Access to the underlying two-pass renderer (tests / title-lock writers).
-    public var twoPassRenderer: NestedTopologyTwoPassRenderer {
-        get { renderer }
-        set { renderer = newValue }
+    /// Locks a native title so subsequent projections cannot overwrite it.
+    public mutating func lockTitle(
+        for key: NestedAssociationKey,
+        title: String,
+        authority: NestedTitleAuthority
+    ) {
+        renderer.lockTitle(for: key, title: title, authority: authority)
     }
 
     /// Projects all attachments for `nested.topology.list`.

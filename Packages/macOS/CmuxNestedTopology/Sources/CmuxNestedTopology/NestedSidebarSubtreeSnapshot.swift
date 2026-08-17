@@ -39,7 +39,7 @@ public struct NestedSidebarSubtreeSnapshot: Hashable, Sendable {
         self.roots = roots
     }
 
-    /// Accessibility label for the expandable host section.
+    /// Accessibility label for the expandable host section (fixed English tokens; no paths).
     public var accessibilityLabel: String {
         var parts = ["nested", providerKind.rawValue]
         if isStale {
