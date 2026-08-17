@@ -112,6 +112,12 @@ final class FakeHerdrUnixSocketServer: @unchecked Sendable {
         lock.lock()
         running = false
         lock.unlock()
+        // Unblock a thread parked in accept() before invalidating the descriptor.
+        #if canImport(Darwin)
+        _ = Darwin.shutdown(listenFD, SHUT_RDWR)
+        #else
+        _ = Glibc.shutdown(listenFD, Int32(SHUT_RDWR))
+        #endif
         _ = posixClose(listenFD)
         unlink(path)
     }
