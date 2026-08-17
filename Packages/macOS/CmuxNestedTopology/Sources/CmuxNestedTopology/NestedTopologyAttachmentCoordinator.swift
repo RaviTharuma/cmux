@@ -22,7 +22,6 @@ public import Foundation
 public actor NestedTopologyAttachmentCoordinator {
     private var attachments: [UUID: NestedAttachmentRecord]
     private var proposals: [UUID: NestedAttachmentProposal]
-    private var connectTasks: [UUID: Task<Void, Never>]
     private var eventTasks: [UUID: Task<Void, Never>]
     private var generationTokens: [UUID: UUID]
     private var liveEnvironmentSurfaceIDs: Set<UUID>
@@ -76,7 +75,6 @@ public actor NestedTopologyAttachmentCoordinator {
     ) {
         self.attachments = [:]
         self.proposals = [:]
-        self.connectTasks = [:]
         self.eventTasks = [:]
         self.generationTokens = [:]
         self.liveEnvironmentSurfaceIDs = []
@@ -169,17 +167,7 @@ public actor NestedTopologyAttachmentCoordinator {
         guard let authorization, authorization.isExplicitOptIn else {
             throw NestedAttachmentError.optInRequired
         }
-        if case .authenticatedControlSocket(let requestID) = authorization {
-            let sanitized = NestedDisplayStringSanitizer.sanitize(
-                requestID,
-                maxUTF8ByteCount: limits.maxAuthorizationRequestIDUTF8ByteCount
-            )
-            if sanitized.utf8.count > limits.maxAuthorizationRequestIDUTF8ByteCount
-                || sanitized.isEmpty && !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                throw NestedAttachmentError.oversizedField("authorization.request_id")
-            }
-        }
+        try validateAuthorizationRequestID(authorization)
 
         let sanitizedWorkspaceID = NestedDisplayStringSanitizer.sanitize(
             hostWorkspaceID,
@@ -424,7 +412,14 @@ public actor NestedTopologyAttachmentCoordinator {
             hostWorkspaceID,
             maxUTF8ByteCount: limits.maxHostWorkspaceIDUTF8ByteCount
         )
-        let workspaceID = sanitizedWorkspaceID.isEmpty ? hostWorkspaceID : sanitizedWorkspaceID
+        let workspaceID = sanitizedWorkspaceID
+        guard !workspaceID.isEmpty else {
+            return await leaveRestoreDisconnected(
+                hostStableSurfaceID: hostStableSurfaceID,
+                intent: intent,
+                error: .oversizedField("host_workspace_id")
+            )
+        }
 
         if let existing = attachments[hostStableSurfaceID] {
             switch existing.state {
@@ -454,7 +449,7 @@ public actor NestedTopologyAttachmentCoordinator {
             providerKind: intent.providerKind,
             state: .disconnected,
             lastErrorClass: NestedAttachmentError.restoreRequiresConfirmation(
-                reason: "pending"
+                reason: .pending
             ).telemetryErrorClass,
             pendingRestoreIntent: intent
         )
@@ -473,15 +468,16 @@ public actor NestedTopologyAttachmentCoordinator {
               let locator = intent.endpointLocator,
               let expectedInstanceID = intent.lastVerifiedProviderInstanceID
         else {
-            let reason: String
+            let reason: NestedRestoreConfirmationReason
             if intent.reattachPolicy != .autoIfProviderInstanceMatches {
-                reason = "policy_requires_confirmation"
+                reason = .policyRequiresConfirmation
             } else if !intent.providerInstanceIdentityProofAvailable
                 || intent.lastVerifiedProviderInstanceID == nil
+                || intent.lastVerifiedFileIdentity == nil
             {
-                reason = "identity_proof_unavailable"
+                reason = .identityProofUnavailable
             } else {
-                reason = "endpoint_missing"
+                reason = .endpointMissing
             }
             return await leaveRestoreDisconnected(
                 hostStableSurfaceID: hostStableSurfaceID,
@@ -556,12 +552,12 @@ public actor NestedTopologyAttachmentCoordinator {
 
                 guard handshake.instanceIdentityIsDurable else {
                     throw NestedAttachmentError.restoreRequiresConfirmation(
-                        reason: "identity_proof_unavailable"
+                        reason: .identityProofUnavailable
                     )
                 }
                 guard handshake.providerInstanceID == expectedInstanceID else {
                     throw NestedAttachmentError.restoreRequiresConfirmation(
-                        reason: "provider_instance_mismatch"
+                        reason: .providerInstanceMismatch
                     )
                 }
 
@@ -748,6 +744,7 @@ public actor NestedTopologyAttachmentCoordinator {
         for id in ids {
             await detach(hostStableSurfaceID: id, reason: .hostWindowTeardown)
         }
+        generationTokens.removeAll()
         proposals.removeAll()
         publishPersistenceIntents()
     }
@@ -787,17 +784,7 @@ public actor NestedTopologyAttachmentCoordinator {
         guard let authorization = request.authorization, authorization.isExplicitOptIn else {
             throw NestedAttachmentError.optInRequired
         }
-        if case .authenticatedControlSocket(let requestID) = authorization {
-            let sanitized = NestedDisplayStringSanitizer.sanitize(
-                requestID,
-                maxUTF8ByteCount: limits.maxAuthorizationRequestIDUTF8ByteCount
-            )
-            if sanitized.utf8.count > limits.maxAuthorizationRequestIDUTF8ByteCount
-                || (sanitized.isEmpty && !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            {
-                throw NestedAttachmentError.oversizedField("authorization.request_id")
-            }
-        }
+        try validateAuthorizationRequestID(authorization)
 
         let record = try resolveLiveAttachment(
             hostStableSurfaceID: request.hostStableSurfaceID,
@@ -881,6 +868,22 @@ public actor NestedTopologyAttachmentCoordinator {
 
     // MARK: - Internals
 
+
+    private func validateAuthorizationRequestID(
+        _ authorization: NestedAttachmentAuthorization
+    ) throws {
+        guard case .authenticatedControlSocket(let requestID) = authorization else { return }
+        let sanitized = NestedDisplayStringSanitizer.sanitize(
+            requestID,
+            maxUTF8ByteCount: limits.maxAuthorizationRequestIDUTF8ByteCount
+        )
+        if sanitized.utf8.count > limits.maxAuthorizationRequestIDUTF8ByteCount
+            || (sanitized.isEmpty && !requestID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        {
+            throw NestedAttachmentError.oversizedField("authorization.request_id")
+        }
+    }
+
     private func leaveRestoreDisconnected(
         hostStableSurfaceID: UUID,
         intent: NestedAttachmentIntentDescriptor,
@@ -899,7 +902,6 @@ public actor NestedTopologyAttachmentCoordinator {
             )
         }
         if generation != nil {
-            connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
             eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
             liveClients.removeValue(forKey: hostStableSurfaceID)
             liveEnvironmentSurfaceIDs.remove(hostStableSurfaceID)
@@ -953,8 +955,7 @@ public actor NestedTopologyAttachmentCoordinator {
         reason: NestedDetachReason,
         emitTelemetry: Bool
     ) async {
-        generationTokens[hostStableSurfaceID] = UUID()
-        connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
+        generationTokens.removeValue(forKey: hostStableSurfaceID)
         eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
         liveClients.removeValue(forKey: hostStableSurfaceID)
 
@@ -985,13 +986,13 @@ public actor NestedTopologyAttachmentCoordinator {
         remove: Bool
     ) async {
         guard generationTokens[hostStableSurfaceID] == generation else { return }
-        connectTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
         eventTasks.removeValue(forKey: hostStableSurfaceID)?.cancel()
         liveClients.removeValue(forKey: hostStableSurfaceID)
         liveEnvironmentSurfaceIDs.remove(hostStableSurfaceID)
         publishEnvironmentMirror()
         try? handoff.release(hostStableSurfaceID: hostStableSurfaceID)
 
+        let previous = attachments[hostStableSurfaceID]
         if remove {
             attachments.removeValue(forKey: hostStableSurfaceID)
         } else if var record = attachments[hostStableSurfaceID] {
@@ -1010,10 +1011,10 @@ public actor NestedTopologyAttachmentCoordinator {
             NestedAttachmentTelemetryEvent(
                 name: "attach_failed",
                 state: state,
-                providerKind: attachments[hostStableSurfaceID]?.providerKind,
+                providerKind: attachments[hostStableSurfaceID]?.providerKind ?? previous?.providerKind,
                 errorClass: error.telemetryErrorClass,
                 hostStableSurfaceID: hostStableSurfaceID,
-                attachmentID: attachments[hostStableSurfaceID]?.attachmentID
+                attachmentID: attachments[hostStableSurfaceID]?.attachmentID ?? previous?.attachmentID
             )
         )
     }

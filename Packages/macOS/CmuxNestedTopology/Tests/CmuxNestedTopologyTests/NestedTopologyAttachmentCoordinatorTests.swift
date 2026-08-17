@@ -339,13 +339,17 @@ import Testing
             )
         }
 
-        // One coordinator / one factory client — attach sequentially with a factory
-        // that returns a fresh stub via a box would be heavier; attach two surfaces
-        // using one client is enough to prove teardown clears the map + locks.
-        let client = makeClient(surface: AttachmentTestFixtures.surfaceA, instance: "t1")
+        // Attach two surfaces through a sequencing factory, then prove teardown
+        // clears every attachment and releases both handoffs.
+        let factory = SequencingClientFactory { configuration in
+            makeClient(
+                surface: configuration.hostStableSurfaceID,
+                instance: configuration.hostStableSurfaceID == AttachmentTestFixtures.surfaceA ? "t1" : "t2"
+            )
+        }
         let coordinator = NestedTopologyAttachmentCoordinator(
             validator: StubEndpointValidator(preConnectResult: .success(AttachmentTestFixtures.endpoint)),
-            clientFactory: StubNestedTopologyProviderClientFactory(client: client),
+            clientFactory: factory,
             handoff: NestedPluginWriterHandoff(directoryURL: handoffDir)
         )
         _ = try await coordinator.attach(
@@ -355,11 +359,22 @@ import Testing
             socketPath: AttachmentTestFixtures.endpoint.canonicalPath,
             authorization: .userConfirmed
         )
+        _ = try await coordinator.attach(
+            hostWorkspaceID: AttachmentTestFixtures.workspaceA,
+            hostStableSurfaceID: AttachmentTestFixtures.surfaceB,
+            providerKind: .herdr,
+            socketPath: AttachmentTestFixtures.endpoint.canonicalPath,
+            authorization: .userConfirmed
+        )
         await coordinator.teardown()
         #expect(await coordinator.allAttachments().isEmpty)
         #expect(
             NestedPluginWriterHandoff(directoryURL: handoffDir)
                 .isHeld(hostStableSurfaceID: AttachmentTestFixtures.surfaceA) == false
+        )
+        #expect(
+            NestedPluginWriterHandoff(directoryURL: handoffDir)
+                .isHeld(hostStableSurfaceID: AttachmentTestFixtures.surfaceB) == false
         )
     }
 
@@ -612,7 +627,10 @@ import Testing
         )
         #expect(record.state == .live)
         #expect(record.latestSnapshot?.workspaces.isEmpty == false)
-        #expect(record.endpoint?.canonicalPath == server.path || record.endpoint != nil)
+        let endpoint = try #require(record.endpoint)
+        let expectedCanonical = try NestedUnixSocketEndpointValidator(expectedOwnerUID: geteuid())
+            .canonicalize(server.path)
+        #expect(endpoint.canonicalPath == expectedCanonical)
 
         await coordinator.teardown()
     }
