@@ -90,5 +90,14 @@ public struct BetaFeaturesCatalogSection: SettingCatalogSection {
         userDefaultsKey: "nestedTopology.beta.enabled"
     )
 
+    /// Mirror Herdr tabs like ssh-tmux: one cmux tab per Herdr tab, real
+    /// Bonsplit panes + Ghostty surfaces, feed-forward size, detach-on-close.
+    /// Distinct from Nested Topology (sidebar navigator). Defaults off.
+    public let remoteHerdrMirror = DefaultsKey<Bool>(
+        id: "betaFeatures.remoteHerdrMirror",
+        defaultValue: false,
+        userDefaultsKey: "betaFeatures.remoteHerdrMirror"
+    )
+
     public init() {}
 }
