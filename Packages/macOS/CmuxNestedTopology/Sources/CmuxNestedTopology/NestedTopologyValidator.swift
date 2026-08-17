@@ -234,29 +234,28 @@ public struct NestedTopologyValidator: Sendable {
     }
 
     private func validateAcyclicParentage(snapshot: NestedTopologySnapshot) throws {
-        let tabParent = Dictionary(uniqueKeysWithValues: snapshot.tabs.map { ($0.id, $0.workspaceID) })
-        let paneParent = Dictionary(uniqueKeysWithValues: snapshot.panes.map { ($0.id, $0.tabID) })
-        let agentParent = Dictionary(uniqueKeysWithValues: snapshot.agents.map { ($0.id, $0.paneID) })
-
+        // One shared parent map for the whole snapshot (workspace <- tab <- pane <- agent).
+        // Avoids rebuilding dictionaries inside each pane/agent loop.
+        var parentByChild: [NestedNodeID: NestedNodeID] = [:]
+        parentByChild.reserveCapacity(snapshot.tabs.count + snapshot.panes.count + snapshot.agents.count)
         for tab in snapshot.tabs {
-            try assertNoCycle(from: tab.id, edges: tabParent)
+            parentByChild[tab.id] = tab.workspaceID
         }
         for pane in snapshot.panes {
-            var edges = paneParent
-            for (tabID, workspaceID) in tabParent {
-                edges[tabID] = workspaceID
-            }
-            try assertNoCycle(from: pane.id, edges: edges)
+            parentByChild[pane.id] = pane.tabID
         }
         for agent in snapshot.agents {
-            var edges = agentParent
-            for (paneID, tabID) in paneParent {
-                edges[paneID] = tabID
-            }
-            for (tabID, workspaceID) in tabParent {
-                edges[tabID] = workspaceID
-            }
-            try assertNoCycle(from: agent.id, edges: edges)
+            parentByChild[agent.id] = agent.paneID
+        }
+
+        for tab in snapshot.tabs {
+            try assertNoCycle(from: tab.id, edges: parentByChild)
+        }
+        for pane in snapshot.panes {
+            try assertNoCycle(from: pane.id, edges: parentByChild)
+        }
+        for agent in snapshot.agents {
+            try assertNoCycle(from: agent.id, edges: parentByChild)
         }
     }
 
