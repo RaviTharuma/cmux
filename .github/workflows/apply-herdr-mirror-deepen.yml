@@ -1,0 +1,36 @@
+name: apply-herdr-mirror-deepen
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/apply-herdr-mirror-deepen.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/herdr-native-mirror-f1c1
+          fetch-depth: 0
+
+      - name: Apply deepen bundle and cleanup
+        env:
+          BUNDLE_URL: https://raw.githubusercontent.com/RaviTharuma/cmux-herdr/cursor/pr10045-coderabbit-replies-f1c1/docs/upstream/patches/herdr-native-mirror-deepen.bundle
+        run: |
+          set -euo pipefail
+          git config user.name "Ravi Tharuma"
+          git config user.email "25951435+RaviTharuma@users.noreply.github.com"
+          curl -fsSL "$BUNDLE_URL" -o /tmp/herdr-deepen.bundle
+          git bundle verify /tmp/herdr-deepen.bundle
+          git fetch /tmp/herdr-deepen.bundle HEAD:refs/heads/herdr-deepen-tip
+          git merge --ff-only herdr-deepen-tip
+          if [ -f .github/workflows/apply-herdr-mirror-deepen.yml ]; then
+            git rm -f .github/workflows/apply-herdr-mirror-deepen.yml
+            git commit -m "chore: remove one-shot apply-herdr-mirror-deepen workflow" || true
+          fi
+          git push origin HEAD:cursor/herdr-native-mirror-f1c1
+          echo "Pushed $(git rev-parse HEAD)"
