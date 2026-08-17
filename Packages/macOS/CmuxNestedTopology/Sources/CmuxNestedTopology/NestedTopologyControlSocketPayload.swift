@@ -5,25 +5,24 @@ public import Foundation
 ///
 /// Uses snake_case Codable keys from the public read types. Callers bridge via
 /// `JSONValue(foundationObject:)` on the app/control-socket side.
-public enum NestedTopologyControlSocketPayload: Sendable {
+///
+/// Construct at the control-socket composition seam rather than ambient statics.
+public struct NestedTopologyControlSocketPayload: Sendable {
+    /// Creates a payload encoder/decoder.
+    public init() {}
+
     /// Encodes a list result as a Foundation dictionary.
-    ///
-    /// - Parameter result: Projected list result.
-    /// - Returns: JSON object dictionary, or `nil` if encoding fails.
-    public static func foundationObject(for result: NestedTopologyReadListResult) -> [String: Any]? {
+    public func foundationObject(for result: NestedTopologyReadListResult) -> [String: Any]? {
         encodeToDictionary(result)
     }
 
     /// Encodes a focus result as a Foundation dictionary.
-    public static func foundationObject(for result: NestedNodeFocusResult) -> [String: Any]? {
+    public func foundationObject(for result: NestedNodeFocusResult) -> [String: Any]? {
         encodeToDictionary(result)
     }
 
     /// Encodes attachments for an additive `system.tree` `nested` field.
-    ///
-    /// Default `system.tree` responses must omit this field entirely so the
-    /// payload stays byte-compatible with prior clients.
-    public static func foundationNestedTreeObject(
+    public func foundationNestedTreeObject(
         attachments: [NestedTopologyReadAttachment]
     ) -> [String: Any]? {
         let envelope = NestedTopologyReadListResult(attachments: attachments)
@@ -31,7 +30,7 @@ public enum NestedTopologyControlSocketPayload: Sendable {
     }
 
     /// Whether `include_nested` was requested in control-socket params.
-    public static func includeNestedRequested(_ params: [String: Any]) -> Bool {
+    public func includeNestedRequested(_ params: [String: Any]) -> Bool {
         if let bool = params["include_nested"] as? Bool {
             return bool
         }
@@ -42,14 +41,14 @@ public enum NestedTopologyControlSocketPayload: Sendable {
     }
 
     /// Decodes a structured compound ``NestedNodeID`` from a Foundation JSON object.
-    public static func decodeNodeID(from foundation: Any?) -> NestedNodeID? {
+    public func decodeNodeID(from foundation: Any?) -> NestedNodeID? {
         guard let foundation else { return nil }
         guard JSONSerialization.isValidJSONObject(foundation) else { return nil }
         guard let data = try? JSONSerialization.data(withJSONObject: foundation) else { return nil }
         return try? JSONDecoder().decode(NestedNodeID.self, from: data)
     }
 
-    private static func encodeToDictionary<T: Encodable>(_ value: T) -> [String: Any]? {
+    private func encodeToDictionary<T: Encodable>(_ value: T) -> [String: Any]? {
         let encoder = JSONEncoder()
         encoder.outputFormatting = []
         guard let data = try? encoder.encode(value) else { return nil }

@@ -25,6 +25,4 @@ public enum NestedAttachmentProposalSource: String, Hashable, Codable, Sendable 
     case environment
     /// Suggested from a bounded OSC discovery descriptor (future PR).
     case oscDescriptor
-    /// Suggested by a test or debugging helper.
-    case debug
 }

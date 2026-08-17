@@ -3,9 +3,14 @@
 /// The claim reads only window geometry, chrome constants, and cell metrics —
 /// never a measured pane frame. That is the ssh-tmux invariant that prevents
 /// the container from growing each pass.
-public enum RemoteHerdrSizing {
+///
+/// Construct at the mirror composition seam rather than calling ambient statics.
+public struct RemoteHerdrSizing: Sendable {
+    /// Creates a sizing helper.
+    public init() {}
+
     /// Computes the grid to claim from Herdr for one mirrored tab.
-    public static func clientGrid(
+    public func clientGrid(
         contentWidth: Double,
         contentHeight: Double,
         cellWidth: Double,
@@ -25,7 +30,7 @@ public enum RemoteHerdrSizing {
 
     /// Converts a dragged first-child extent (points) into a cell span for
     /// ``pane.resize`` (tmux divider-drag → ``resize-pane``).
-    public static func resizeCells(
+    public func resizeCells(
         draggedExtent: Double,
         axisSpan: Double,
         totalCells: Int
