@@ -72,7 +72,7 @@ extension Array where Element == CuratedSettingEntry {
                 id: "canvas-snapping",
                 title: String(localized: "settings.app.canvasSnapping", defaultValue: "Canvas Snapping"),
                 paths: ["canvas.snappingEnabled"],
-                synonyms: "canvas.snappingEnabled canvas snap snapping enabled edges drag resize align panes freeform layout"
+                synonyms: "canvas.snappingEnabled canvas snap snapping unabled edges drag resize align panes freeform layout"
             ),
             .init(section: .app, id: "dock-badge", title: "Dock Badge", synonyms: "notifications.dockBadge badge dock unread count icon notifications red bubble"),
             .init(section: .app, id: "show-menu-bar", title: "Show in Menu Bar", synonyms: "notifications.showInMenuBar menubar menu bar status item tray extra"),
@@ -279,6 +279,7 @@ extension Array where Element == CuratedSettingEntry {
             .init(section: .betaFeatures, id: "customSidebars", title: "Custom Sidebars", synonyms: "custom sidebars swift json interpreted vibe beta unstable"),
             .init(section: .betaFeatures, id: "remoteTmux", title: "Remote tmux", synonyms: "remote tmux ssh control mode -CC mirror session window pane sidebar workspace beta unstable"),
             .init(section: .betaFeatures, id: "nestedTopology", title: "Nested Topology", synonyms: "nested topology herdr virtual descendants host surface sidebar focus beta unstable"),
+            .init(section: .betaFeatures, id: "remoteHerdrMirror", title: "Mirror tabs like ssh-tmux", synonyms: "herdr mirror tabs ssh-tmux bonsplit ghostty window pane detach beta unstable"),
             .init(
                 section: .betaFeatures,
                 id: "workspace-todo-controls",
