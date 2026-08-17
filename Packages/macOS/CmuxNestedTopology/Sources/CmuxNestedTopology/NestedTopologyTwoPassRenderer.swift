@@ -3,20 +3,23 @@ public import Foundation
 /// Two-pass nested topology projector for control-socket and sidebar reads.
 ///
 /// Pass 1 installs the authoritative ``NestedParentMap`` from the snapshot.
-/// Pass 2 resolves labels through ``NestedAssociationStore`` title locks and
-/// only publishes a new label when it differs from the last published value
-/// (no thrash when the provider echoes the same title).
+/// Pass 2 resolves labels through ``NestedAssociationStore`` title locks.
+/// Projection state (parent map + installed provider generation) is keyed per
+/// attachment so multi-attachment ticks do not invalidate each other.
 ///
 /// Heuristic association runs at most once per association key.
 public struct NestedTopologyTwoPassRenderer: Sendable {
-    /// Stable parent edges used instead of re-inferring parents every tick.
+    private struct AttachmentProjectionState: Sendable {
+        var parentMap: NestedParentMap = NestedParentMap()
+        var installedProviderInstanceID: NestedProviderInstanceID?
+    }
+
+    /// Stable parent edges used by ``applyParentMapEvents`` and single-attachment tests.
     public private(set) var parentMap: NestedParentMap
-    /// Association / title-lock store for this attachment generation.
+    /// Association / title-lock store shared across attachments (keys include instance ID).
     public private(set) var associations: NestedAssociationStore
-    /// Last labels published per node (diff gate).
-    private var lastPublishedLabels: [NestedNodeID: String]
-    /// Provider instance generation last installed; used to invalidate associations.
-    private var installedProviderInstanceID: NestedProviderInstanceID?
+    /// Per-attachment parent maps and installed provider generations.
+    private var stateByAttachment: [UUID: AttachmentProjectionState]
     /// Deterministic collection ordering for projection passes.
     private let ordering = NestedTopologyOrdering()
 
@@ -24,8 +27,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
     public init() {
         self.parentMap = NestedParentMap()
         self.associations = NestedAssociationStore()
-        self.lastPublishedLabels = [:]
-        self.installedProviderInstanceID = nil
+        self.stateByAttachment = [:]
     }
 
     /// Projects one attachment into a public read summary.
@@ -39,8 +41,7 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             || attachment.state == .incompatible
 
         guard let snapshot = attachment.latestSnapshot else {
-            parentMap = NestedParentMap()
-            lastPublishedLabels = [:]
+            stateByAttachment[attachment.attachmentID] = AttachmentProjectionState()
             return NestedTopologyReadAttachment(
                 attachmentID: attachment.attachmentID,
                 hostWorkspaceID: attachment.hostWorkspaceID,
@@ -55,18 +56,28 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             )
         }
 
-        if let instance = attachment.providerInstanceID,
-           installedProviderInstanceID != instance {
-            associations.invalidate(providerInstanceGeneration: instance)
-            installedProviderInstanceID = instance
-            lastPublishedLabels = [:]
+        var state = stateByAttachment[attachment.attachmentID] ?? AttachmentProjectionState()
+        if let instance = attachment.providerInstanceID {
+            if let previous = state.installedProviderInstanceID, previous != instance {
+                // Drop only this attachment's superseded generation; keep other attachments.
+                associations.drop(providerInstanceGeneration: previous)
+            }
+            state.installedProviderInstanceID = instance
         }
 
         // Pass 1: authoritative parent map from snapshot (never re-infer from titles).
-        parentMap.replace(with: snapshot)
+        state.parentMap.replace(with: snapshot)
+        stateByAttachment[attachment.attachmentID] = state
+        // Keep the public parentMap mirror for applyParentMapEvents / tests.
+        parentMap = state.parentMap
 
-        // Pass 2: resolve labels with title locks; publish only when changed.
-        let nodes = buildNodes(attachment: attachment, snapshot: snapshot, stale: stale)
+        // Pass 2: resolve labels with title locks.
+        let nodes = buildNodes(
+            attachment: attachment,
+            snapshot: snapshot,
+            stale: stale,
+            parentMap: state.parentMap
+        )
         return NestedTopologyReadAttachment(
             attachmentID: attachment.attachmentID,
             hostWorkspaceID: attachment.hostWorkspaceID,
@@ -119,7 +130,8 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
     private mutating func buildNodes(
         attachment: NestedAttachmentRecord,
         snapshot: NestedTopologySnapshot,
-        stale: Bool
+        stale: Bool,
+        parentMap: NestedParentMap
     ) -> [NestedTopologyReadNode] {
         var nodes: [NestedTopologyReadNode] = []
         nodes.reserveCapacity(
@@ -273,14 +285,9 @@ public struct NestedTopologyTwoPassRenderer: Sendable {
             providerInstanceGeneration: providerInstanceID
         )
         let proposal = associations.proposeTitle(for: key, proposed: proposed)
-        let resolved = NestedDisplayStringSanitizer.sanitize(
+        return NestedDisplayStringSanitizer.sanitize(
             proposal.title,
             maxUTF8ByteCount: NestedTopologyLimits.default.maxDisplayTitleUTF8ByteCount
         )
-        if let previous = lastPublishedLabels[nodeID], previous == resolved {
-            return previous
-        }
-        lastPublishedLabels[nodeID] = resolved
-        return resolved
     }
 }
