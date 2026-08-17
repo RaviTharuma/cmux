@@ -17,7 +17,7 @@ jobs:
           ref: cursor/herdr-native-mirror-f1c1
           fetch-depth: 0
 
-      - name: Apply deepen bundle and cleanup
+      - name: Cherry-pick deepen tip and cleanup
         env:
           BUNDLE_URL: https://raw.githubusercontent.com/RaviTharuma/cmux-herdr/cursor/pr10045-coderabbit-replies-f1c1/docs/upstream/patches/herdr-native-mirror-deepen.bundle
         run: |
@@ -27,7 +27,14 @@ jobs:
           curl -fsSL "$BUNDLE_URL" -o /tmp/herdr-deepen.bundle
           git bundle verify /tmp/herdr-deepen.bundle
           git fetch /tmp/herdr-deepen.bundle HEAD:refs/heads/herdr-deepen-tip
-          git merge --ff-only herdr-deepen-tip
+          # Workflow commits diverge from the deepen tip; cherry-pick the deepen
+          # commit onto the current branch tip, then drop this one-shot workflow.
+          DEEPEN_SHA=$(git rev-parse herdr-deepen-tip)
+          if git merge-base --is-ancestor "$DEEPEN_SHA" HEAD; then
+            echo "Deepen tip already present"
+          else
+            git cherry-pick "$DEEPEN_SHA"
+          fi
           if [ -f .github/workflows/apply-herdr-mirror-deepen.yml ]; then
             git rm -f .github/workflows/apply-herdr-mirror-deepen.yml
             git commit -m "chore: remove one-shot apply-herdr-mirror-deepen workflow" || true
