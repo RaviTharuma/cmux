@@ -33,62 +33,76 @@ jobs:
           set -euo pipefail
           git config user.name "cursor-agent"
           git config user.email "cursoragent@cursor.com"
-          git apply /tmp/policy-10045.patch
+          git apply --3way /tmp/policy-10045.patch
           python3 << 'PY'
-          import json
+          import json, re
           from pathlib import Path
-          p = Path("Resources/Localizable.xcstrings")
-          data = json.loads(p.read_text())
-          locales = ['ar','bs','da','de','en','es','fr','it','ja','km','ko','nb','pl','pt-BR','ru','th','tr','uk','zh-Hans','zh-Hant']
-          keys = [
-           "settings.betaFeatures.nestedTopology",
-           "settings.betaFeatures.nestedTopology.subtitleOff",
-           "settings.betaFeatures.nestedTopology.subtitleOn",
-           "sidebar.nestedTopology.focusHint",
-           "sidebar.nestedTopology.header",
-           "sidebar.nestedTopology.state.connecting",
-           "sidebar.nestedTopology.state.disconnected",
-           "sidebar.nestedTopology.state.incompatible",
-           "sidebar.nestedTopology.state.live",
-           "sidebar.nestedTopology.state.rejected",
-           "sidebar.nestedTopology.state.stale",
-           "socket.nestedTopology.disabled",
-           "socket.nestedTopology.focusFailed",
-           "socket.nestedTopology.invalidAttachmentID",
-           "socket.nestedTopology.invalidHostSurfaceID",
-           "socket.nestedTopology.invalidNodeID",
-           "socket.nestedTopology.invalidProviderInstanceID",
-          ]
+          path = Path("Resources/Localizable.xcstrings")
+          text = path.read_text()
+          data = json.loads(text)
+          locales = ["ar","bs","da","de","en","es","fr","it","ja","km","ko","nb","pl","pt-BR","ru","th","tr","uk","zh-Hans","zh-Hant"]
           de = {
-           "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
-           "settings.betaFeatures.nestedTopology.subtitleOff": "Blendet verschachtelte Topologie-Reads, Fokus und Sidebar-Unterbäume aus, bis du sie hier aktivierst.",
-           "settings.betaFeatures.nestedTopology.subtitleOn": "Zeigt verschachtelte Workspaces/Tabs/Panes/Agents als virtuelle Nachfahren unter der Host-Terminalfläche. Unterstützt fähigkeitsgesteuerten Fokus; erzeugt keine cmux-Panes.",
-           "sidebar.nestedTopology.focusHint": "Verschachtelten Knoten fokussieren",
-           "sidebar.nestedTopology.header": "Verschachtelt",
-           "sidebar.nestedTopology.state.connecting": "Verbinden",
-           "sidebar.nestedTopology.state.disconnected": "Getrennt",
-           "sidebar.nestedTopology.state.incompatible": "Inkompatibel",
-           "sidebar.nestedTopology.state.live": "Aktiv",
-           "sidebar.nestedTopology.state.rejected": "Abgelehnt",
-           "sidebar.nestedTopology.state.stale": "Veraltet",
-           "socket.nestedTopology.disabled": "Nested-Topology-Beta ist deaktiviert",
-           "socket.nestedTopology.focusFailed": "Verschachtelter Fokus fehlgeschlagen",
-           "socket.nestedTopology.invalidAttachmentID": "expected_attachment_id fehlt oder ist ungültig",
-           "socket.nestedTopology.invalidHostSurfaceID": "host_surface_id fehlt oder ist ungültig",
-           "socket.nestedTopology.invalidNodeID": "node_id fehlt oder ist ungültig",
-           "socket.nestedTopology.invalidProviderInstanceID": "expected_provider_instance_id fehlt oder ist ungültig",
+            "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
+            "settings.betaFeatures.nestedTopology.subtitleOff": "Blendet Lesezugriff, Fokus und Sidebar-Unterbäume der verschachtelten Topologie aus, bis Sie sie hier aktivieren.",
+            "settings.betaFeatures.nestedTopology.subtitleOn": "Zeigt verschachtelte Workspaces, Tabs, Panes und Agents als virtuelle Nachfahren unter der Host-Terminalfläche. Unterstützt fähigkeitsgesteuerten Fokus und erzeugt keine cmux-Panes.",
+            "sidebar.nestedTopology.focusHint": "Verschachtelten Knoten fokussieren",
+            "sidebar.nestedTopology.header": "Verschachtelt",
+            "sidebar.nestedTopology.state.connecting": "Verbinden",
+            "sidebar.nestedTopology.state.disconnected": "Getrennt",
+            "sidebar.nestedTopology.state.incompatible": "Inkompatibel",
+            "sidebar.nestedTopology.state.live": "Live",
+            "sidebar.nestedTopology.state.rejected": "Abgelehnt",
+            "sidebar.nestedTopology.state.stale": "Veraltet",
+            "socket.nestedTopology.disabled": "Die Nested-Topology-Beta ist deaktiviert",
+            "socket.nestedTopology.focusFailed": "Verschachtelter Fokus fehlgeschlagen",
+            "socket.nestedTopology.invalidAttachmentID": "Fehlende oder ungültige Attachment-Kennung",
+            "socket.nestedTopology.invalidHostSurfaceID": "Fehlende oder ungültige Host-Flächen-Kennung",
+            "socket.nestedTopology.invalidNodeID": "Fehlende oder ungültige Knoten-Kennung",
+            "socket.nestedTopology.invalidProviderInstanceID": "Fehlende oder ungültige Provider-Instanz-Kennung",
           }
-          for k in keys:
-              locs = data["strings"][k].setdefault("localizations", {})
-              en = locs["en"]["stringUnit"]["value"]
-              for loc in locales:
-                  if loc in locs:
-                      continue
-                  value = de[k] if loc == "de" else en
-                  locs[loc] = {"stringUnit": {"state": "translated", "value": value}}
-          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+          en_overrides = {
+            "socket.nestedTopology.invalidAttachmentID": "Missing or invalid attachment identifier",
+            "socket.nestedTopology.invalidHostSurfaceID": "Missing or invalid host surface identifier",
+            "socket.nestedTopology.invalidNodeID": "Missing or invalid node identifier",
+            "socket.nestedTopology.invalidProviderInstanceID": "Missing or invalid provider instance identifier",
+          }
+          def loc_block(value):
+              escaped = json.dumps(value, ensure_ascii=False)
+              return '          "stringUnit": {\n            "state": "translated",\n            "value": %s\n          }' % escaped
+          def entry_block(key):
+              locs = data["strings"][key]["localizations"]
+              en_value = en_overrides.get(key, locs["en"]["stringUnit"]["value"])
+              ja_value = locs["ja"]["stringUnit"]["value"]
+              lines = ['    "%s": {' % key, '      "extractionState": "manual",', '      "localizations": {']
+              for i, loc in enumerate(locales):
+                  if loc == "en":
+                      value = en_value
+                  elif loc == "ja":
+                      value = ja_value
+                  elif loc == "de":
+                      value = de[key]
+                  else:
+                      value = en_value
+                  comma = "," if i < len(locales) - 1 else ""
+                  lines.append('        "%s": {' % loc)
+                  lines.append(loc_block(value))
+                  lines.append('        }%s' % comma)
+              lines.append('      }')
+              lines.append('    }')
+              return "\n".join(lines)
+          new_text = text
+          for key in de:
+              pattern = re.compile(r'    "' + re.escape(key) + r'": \{\n      "extractionState": "manual",\n      "localizations": \{.*?\n      \}\n    \}', re.S)
+              new_text, n = pattern.subn(entry_block(key), new_text, count=1)
+              if n != 1:
+                  raise SystemExit(f"failed to replace {key}: {n}")
+          path.write_text(new_text)
           PY
           git add -A
-          git commit -m "Address cmux pre-merge policy errors for nested topology."
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "fix(nested-topology): clear remaining cmux policy blockers for #10045"
           git push origin "HEAD:cursor/nested-topology-herdr-v1-becf"
           git log -1 --oneline
