@@ -1,0 +1,63 @@
+name: Resolve nested-topology merge with upstream main
+
+on:
+  push:
+    branches:
+      - cursor/merge-10045-bot-6e7a
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  merge-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nested-topology branch
+        uses: actions/checkout@v4
+        with:
+          ref: cursor/nested-topology-herdr-v1-becf
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge manaflow-ai/cmux main
+        run: |
+          set -euo pipefail
+          git config user.name "cursor-agent"
+          git config user.email "cursoragent@cursor.com"
+          git remote add upstream https://github.com/manaflow-ai/cmux.git
+          git fetch origin cursor/nested-topology-herdr-v1-becf
+          git fetch upstream main
+          git checkout cursor/nested-topology-herdr-v1-becf
+          cat > /tmp/resolve-appdelegate-merge.py << 'ENDSCRIPT'
+          from pathlib import Path
+          path = Path("Sources/AppDelegate.swift")
+          text = path.read_text(encoding="utf-8")
+          a1 = "    let workspaceTerminalFontSizeArbiter =\n        WorkspaceTerminalFontSizeArbiter()\n    /// Owns the one process-local Vault drag capability registry."
+          i1 = "    let workspaceTerminalFontSizeArbiter =\n        WorkspaceTerminalFontSizeArbiter()\n    /// Coordinates Herdr nested topology attachment + read projection (PR4); composition-root owned.\n    let nestedTopologyController = NestedTopologyController()\n    /// Owns the one process-local Vault drag capability registry."
+          a2 = "        remoteTmuxController.detachAll()\n        // Best-effort presence goodbye"
+          i2 = "        remoteTmuxController.detachAll()\n        Task { await nestedTopologyController.teardown() }\n        // Best-effort presence goodbye"
+          if a1 not in text:
+              raise SystemExit("AppDelegate anchor 1 not found")
+          if a2 not in text:
+              raise SystemExit("AppDelegate anchor 2 not found")
+          path.write_text(text.replace(a1, i1, 1).replace(a2, i2, 1), encoding="utf-8")
+          ENDSCRIPT
+          if git merge --no-edit upstream/main; then
+            echo "Clean merge"
+          else
+            echo "Resolving expected AppDelegate.swift conflict"
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            echo "Conflicted files:"
+            echo "$conflicts"
+            if [ "$conflicts" != "Sources/AppDelegate.swift" ]; then
+              echo "Unexpected extra conflicts" >&2
+              exit 1
+            fi
+            git checkout --theirs Sources/AppDelegate.swift
+            python3 /tmp/resolve-appdelegate-merge.py
+            git add Sources/AppDelegate.swift
+            git commit -m "Merge manaflow-ai/cmux main into nested-topology branch."
+          fi
+          git push origin "HEAD:cursor/nested-topology-herdr-v1-becf"
+          git log -1 --oneline
