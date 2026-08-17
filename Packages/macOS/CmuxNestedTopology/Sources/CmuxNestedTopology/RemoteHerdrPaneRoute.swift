@@ -138,8 +138,8 @@ public struct RemoteHerdrCwdUpdate: Hashable, Sendable {
 
 /// In-memory I/O router proving tmux isolation without Ghostty.
 ///
-/// Twin of plugin ``PaneIORouter``. Lane B owns this file — do not fold it
-/// into #10045 while CodeRabbit (N/5) is in flight.
+/// Unknown panes are a no-op. Output never crosses panes. Provider
+/// focus never echoes ``pane.focus``.
 public struct RemoteHerdrPaneRoute: Sendable {
     /// pane id → surface id.
     public var surfaces: [String: String] = [:]
