@@ -28,20 +28,74 @@ jobs:
           git fetch origin cursor/merge-10045-bot-6e7a
           git show origin/cursor/merge-10045-bot-6e7a:scripts/policy-10045.patch > /tmp/policy-10045.patch
 
-      - name: Apply patch and fill locales
+      - name: Apply patch, restore catalog, push
         run: |
           set -euo pipefail
           git config user.name "cursor-agent"
           git config user.email "cursoragent@cursor.com"
           git apply --3way /tmp/policy-10045.patch
-          python3 << 'PY'
+          git show 8a55a1d342a917ea6852640df1a8c44f50579e67:Resources/Localizable.xcstrings > Resources/Localizable.xcstrings
+          python3 - <<'PY'
+          import json, re
           from pathlib import Path
           path = Path("Resources/Localizable.xcstrings")
-          raw = path.read_text() if path.exists() else ""
+          raw = path.read_text()
           if not raw.lstrip().startswith("{"):
-              print("skip i18n: Localizable.xcstrings is not JSON (empty or LFS pointer)")
-              raise SystemExit(0)
-          print("skip i18n rewrite on Actions to keep the Swift policy commit small")
+              raise SystemExit("restored xcstrings is not JSON")
+          data = json.loads(raw)
+          locales = ["ar","bs","da","de","en","es","fr","it","ja","km","ko","nb","pl","pt-BR","ru","th","tr","uk","zh-Hans","zh-Hant"]
+          de = {
+            "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
+            "settings.betaFeatures.nestedTopology.subtitleOff": "Blendet Lesezugriff, Fokus und Sidebar-Unterbäume der verschachtelten Topologie aus, bis Sie sie hier aktivieren.",
+            "settings.betaFeatures.nestedTopology.subtitleOn": "Zeigt verschachtelte Workspaces, Tabs, Panes und Agents als virtuelle Nachfahren unter der Host-Terminalfläche. Unterstützt fähigkeitsgesteuerten Fokus und erzeugt keine cmux-Panes.",
+            "sidebar.nestedTopology.focusHint": "Verschachtelten Knoten fokussieren",
+            "sidebar.nestedTopology.header": "Verschachtelt",
+            "sidebar.nestedTopology.state.connecting": "Verbinden",
+            "sidebar.nestedTopology.state.disconnected": "Getrennt",
+            "sidebar.nestedTopology.state.incompatible": "Inkompatibel",
+            "sidebar.nestedTopology.state.live": "Live",
+            "sidebar.nestedTopology.state.rejected": "Abgelehnt",
+            "sidebar.nestedTopology.state.stale": "Veraltet",
+            "socket.nestedTopology.disabled": "Die Nested-Topology-Beta ist deaktiviert",
+            "socket.nestedTopology.focusFailed": "Verschachtelter Fokus fehlgeschlagen",
+            "socket.nestedTopology.invalidAttachmentID": "Fehlende oder ungültige Attachment-Kennung",
+            "socket.nestedTopology.invalidHostSurfaceID": "Fehlende oder ungültige Host-Flächen-Kennung",
+            "socket.nestedTopology.invalidNodeID": "Fehlende oder ungültige Knoten-Kennung",
+            "socket.nestedTopology.invalidProviderInstanceID": "Fehlende oder ungültige Provider-Instanz-Kennung",
+          }
+          en_overrides = {
+            "socket.nestedTopology.invalidAttachmentID": "Missing or invalid attachment identifier",
+            "socket.nestedTopology.invalidHostSurfaceID": "Missing or invalid host surface identifier",
+            "socket.nestedTopology.invalidNodeID": "Missing or invalid node identifier",
+            "socket.nestedTopology.invalidProviderInstanceID": "Missing or invalid provider instance identifier",
+          }
+          def loc_block(value):
+              escaped = json.dumps(value, ensure_ascii=False)
+              return '          "stringUnit": {\n            "state": "translated",\n            "value": %s\n          }' % escaped
+          def entry_block(key):
+              locs = data["strings"][key]["localizations"]
+              en_value = en_overrides.get(key, locs["en"]["stringUnit"]["value"])
+              ja_value = locs["ja"]["stringUnit"]["value"]
+              lines = ['    "%s": {' % key, '      "extractionState": "manual",', '      "localizations": {']
+              for i, loc in enumerate(locales):
+                  value = en_value
+                  if loc == "ja":
+                      value = ja_value
+                  elif loc == "de":
+                      value = de[key]
+                  comma = "," if i < len(locales) - 1 else ""
+                  lines.append('        "%s": {' % loc)
+                  lines.append(loc_block(value))
+                  lines.append('        }%s' % comma)
+              lines.append('      }')
+              lines.append('    }')
+              return "\n".join(lines)
+          new_text = raw
+          for key in de:
+              pattern = re.compile(r'    "' + re.escape(key) + r'": \{\n      "extractionState": "manual",\n      "localizations": \{.*?\n      \}\n    \}', re.S)
+              new_text, n = pattern.subn(entry_block(key), new_text, count=1)
+              print(f"{key}: {n}")
+          path.write_text(new_text)
           PY
           git add -A
           if git diff --cached --quiet; then
@@ -49,5 +103,7 @@ jobs:
             exit 0
           fi
           git commit -m "fix(nested-topology): clear remaining cmux policy blockers for #10045"
+          git fetch origin cursor/nested-topology-herdr-v1-becf
+          git rebase origin/cursor/nested-topology-herdr-v1-becf
           git push origin "HEAD:cursor/nested-topology-herdr-v1-becf"
           git log -1 --oneline
