@@ -1,14 +1,11 @@
 public import Foundation
 import CryptoKit
 
-/// Twin of plugin ``cmux_herdr_lifecycle``.
+/// Attach, detach, restore, and ``remote.herdr.*`` gating.
 ///
-/// Gold standard: ``RemoteTmuxController+Attach``,
-/// ``RemoteTmuxAttachWindowTarget``, ``RemoteTmuxWindowRegistry``,
-/// ``RemoteTmuxPostAttachAction``, and ``remote.tmux.*``.
-///
-/// Lane B owns this file — do not fold it into #10045 while CodeRabbit
-/// (N/5) is in flight. No AppKit. No SSH / ControlMaster / ``tmux -CC``.
+/// Mirrors ``RemoteTmuxController+Attach`` onto the Herdr Unix socket.
+/// No AppKit. No SSH / ControlMaster / ``tmux -CC``. Host close
+/// always detaches. Restore reattaches; it never replays a stale tree.
 public enum RemoteHerdrLifecycle {
     /// Catalog key twin of tmux ``betaFeatures.remoteTmux``.
     public static let settingKey = "betaFeatures.remoteHerdrMirror"
