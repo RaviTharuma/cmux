@@ -209,7 +209,7 @@ import Testing
     }
 
     @Test func clientGridIndependentOfPaneFrames() {
-        let grid = RemoteHerdrSizing.clientGrid(
+        let grid = RemoteHerdrSizing().clientGrid(
             contentWidth: 800,
             contentHeight: 400,
             cellWidth: 8,
@@ -217,7 +217,7 @@ import Testing
         )
         #expect(grid?.cols == 100)
         #expect(grid?.rows == 25)
-        let withChrome = RemoteHerdrSizing.clientGrid(
+        let withChrome = RemoteHerdrSizing().clientGrid(
             contentWidth: 800,
             contentHeight: 400,
             cellWidth: 8,
@@ -228,16 +228,16 @@ import Testing
         #expect(withChrome?.cols == 98)
         #expect(withChrome?.rows == 23)
         #expect(
-            RemoteHerdrSizing.clientGrid(
+            RemoteHerdrSizing().clientGrid(
                 contentWidth: 10,
                 contentHeight: 10,
                 cellWidth: 0,
                 cellHeight: 16
             ) == nil
         )
-        #expect(RemoteHerdrSizing.resizeCells(draggedExtent: 400, axisSpan: 800, totalCells: 100) == 50)
-        #expect(RemoteHerdrSizing.resizeCells(draggedExtent: 0, axisSpan: 800, totalCells: 100) == 5)
-        #expect(RemoteHerdrSizing.resizeCells(draggedExtent: 800, axisSpan: 800, totalCells: 100) == 95)
+        #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 400, axisSpan: 800, totalCells: 100) == 50)
+        #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 0, axisSpan: 800, totalCells: 100) == 5)
+        #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 800, axisSpan: 800, totalCells: 100) == 95)
     }
 
     @Test func outputDeltaIncrementalAndRedraw() {
