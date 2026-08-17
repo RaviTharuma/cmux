@@ -48,7 +48,6 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
         case state
         case pluginWriterHandoffActive = "plugin_writer_handoff_active"
         case lastErrorClass = "last_error_class"
-        case latestSnapshot = "latest_snapshot"
         case pendingRestoreIntent = "pending_restore_intent"
     }
 
@@ -110,14 +109,31 @@ public struct NestedAttachmentRecord: Hashable, Codable, Sendable {
             forKey: .pluginWriterHandoffActive
         ) ?? false
         lastErrorClass = try container.decodeIfPresent(String.self, forKey: .lastErrorClass)
-        latestSnapshot = try container.decodeIfPresent(
-            NestedTopologySnapshot.self,
-            forKey: .latestSnapshot
-        )
+        // Live topology is never persisted with the attachment record.
+        latestSnapshot = nil
         pendingRestoreIntent = try container.decodeIfPresent(
             NestedAttachmentIntentDescriptor.self,
             forKey: .pendingRestoreIntent
         )
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(attachmentID, forKey: .attachmentID)
+        try container.encode(hostWorkspaceID, forKey: .hostWorkspaceID)
+        try container.encode(hostStableSurfaceID, forKey: .hostStableSurfaceID)
+        try container.encode(providerKind, forKey: .providerKind)
+        try container.encodeIfPresent(endpoint, forKey: .endpoint)
+        try container.encodeIfPresent(providerInstanceID, forKey: .providerInstanceID)
+        try container.encode(
+            providerInstanceIdentityProofAvailable,
+            forKey: .providerInstanceIdentityProofAvailable
+        )
+        try container.encode(capabilities, forKey: .capabilities)
+        try container.encode(state, forKey: .state)
+        try container.encode(pluginWriterHandoffActive, forKey: .pluginWriterHandoffActive)
+        try container.encodeIfPresent(lastErrorClass, forKey: .lastErrorClass)
+        try container.encodeIfPresent(pendingRestoreIntent, forKey: .pendingRestoreIntent)
     }
 
     /// Whether the attachment currently suppresses competing plugin writers.
