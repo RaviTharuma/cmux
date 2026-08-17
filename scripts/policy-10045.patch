@@ -634,7 +634,7 @@ index e1cca3d21..e15237211 100644
 +        closeTasks.removeAll()
          await coordinator.teardown()
          expandedHostSurfaceIDs = []
-         sidebarSubtreesByHostSurfaceID -= [:]
+         sidebarSubtreesByHostSurfaceID = [:]
 @@ -206,8 +222,15 @@ final class NestedTopologyController {
      }
  
