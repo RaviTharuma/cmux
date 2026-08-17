@@ -27,22 +27,15 @@ jobs:
           curl -fsSL "$BUNDLE_URL" -o /tmp/herdr-fold.bundle
           git bundle verify /tmp/herdr-fold.bundle
           git fetch /tmp/herdr-fold.bundle HEAD:refs/heads/herdr-fold-tip
-          BASE=$(git rev-parse HEAD)
-          # Cherry-pick only feature commits from the fold tip ancestry
-          # Tip order: 3 feat commits stacked on BASE
-          mapfile -t COMMITS < <(git rev-list --reverse --ancestry-path "${BASE}..herdr-fold-tip")
-          if [ "${#COMMITS[@]}" -eq 0 ]; then
-            # Fallback: cherry-pick by message when ancestry path empty after workflow noise
-            mapfile -t COMMITS < <(git rev-list --reverse herdr-fold-tip --grep='^feat' --max-count=10)
-          fi
+          MB=$(git merge-base HEAD herdr-fold-tip)
+          mapfile -t COMMITS < <(git rev-list --reverse "${MB}..herdr-fold-tip")
+          echo "merge-base=$MB"
           echo "Will cherry-pick: ${COMMITS[*]}"
-          for sha in "${COMMITS[@]}"; do
-            msg=$(git log -1 --format=%s "$sha")
-            case "$msg" in
-              feat:*|feat\(*\)*) git cherry-pick "$sha" ;;
-              *) echo "skip $sha $msg" ;;
-            esac
-          done
+          if [ "${#COMMITS[@]}" -eq 0 ]; then
+            echo "Nothing to fold"
+          else
+            git cherry-pick "${COMMITS[@]}"
+          fi
           if [ -f .github/workflows/fold-herdr-mirror-into-10045.yml ]; then
             git rm -f .github/workflows/fold-herdr-mirror-into-10045.yml
             git commit -m "chore: remove one-shot fold-herdr-mirror-into-10045 workflow" || true
