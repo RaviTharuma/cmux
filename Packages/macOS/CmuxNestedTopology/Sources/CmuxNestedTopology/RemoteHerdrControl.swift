@@ -463,27 +463,32 @@ public struct RemoteHerdrCloseIntent: Hashable, Sendable {
 }
 
 extension RemoteHerdrLayoutNode {
-    var isPane: Bool {
+    /// True when this node is a leaf pane.
+    public var isPane: Bool {
         if case .pane = content { return true }
         return false
     }
 
-    var isHorizontal: Bool {
+    /// True when this node is a horizontal split.
+    public var isHorizontal: Bool {
         if case .horizontal = content { return true }
         return false
     }
 
-    var isVertical: Bool {
+    /// True when this node is a vertical split.
+    public var isVertical: Bool {
         if case .vertical = content { return true }
         return false
     }
 
-    var paneID: String? {
+    /// Leaf pane id when this node is a pane.
+    public var paneID: String? {
         if case let .pane(id) = content { return id }
         return nil
     }
 
-    var children: [RemoteHerdrLayoutNode]? {
+    /// Split children when this node is a split.
+    public var children: [RemoteHerdrLayoutNode]? {
         switch content {
         case .pane:
             return nil

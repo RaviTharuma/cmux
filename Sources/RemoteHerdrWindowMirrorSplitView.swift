@@ -10,6 +10,7 @@ struct RemoteHerdrWindowMirrorSplitView: View {
     let portalPriority: Int
     let onOuterFocus: () -> Void
     var unreadSurfaceIDs: Set<UUID> = []
+    @Environment(\.displayScale) private var displayScale
     @State private var containerSize: CGSize = .zero
 
     var body: some View {
@@ -17,22 +18,25 @@ struct RemoteHerdrWindowMirrorSplitView: View {
             .overlay(alignment: .topLeading) {
                 splitTree
             }
+            .background(HerdrMirrorHostProbe(mirror: mirror))
             .onGeometryChange(for: CGSize.self) { proxy in
                 proxy.size
             } action: { newSize in
                 containerSize = newSize
-                mirror.isVisibleForSizing = isVisibleInUI
+                pushClientSize(pointSize: newSize)
             }
             .onAppear {
                 mirror.isVisibleForSizing = isVisibleInUI
                 mirror.bonsplitController.isInteractive = isVisibleInUI
+                if isVisibleInUI { becameVisible() }
             }
             .onChange(of: isVisibleInUI) { _, visible in
                 mirror.isVisibleForSizing = visible
                 mirror.bonsplitController.isInteractive = visible
+                if visible { becameVisible() }
             }
             .onChange(of: mirror.layoutStructureVersion) { _, _ in
-                mirror.isVisibleForSizing = isVisibleInUI
+                pushClientSize(pointSize: containerSize)
             }
     }
 
@@ -76,9 +80,59 @@ struct RemoteHerdrWindowMirrorSplitView: View {
         }
         .internalOnlyTabDrag()
         .frame(
-            maxWidth: .infinity,
-            maxHeight: .infinity,
+            width: mirror.renderFrameSize?.width,
+            height: mirror.renderFrameSize?.height,
             alignment: .topLeading
         )
+    }
+
+    private func pushClientSize(pointSize: CGSize) {
+        mirror.isVisibleForSizing = isVisibleInUI
+        guard pointSize.width > 0, pointSize.height > 0 else { return }
+        mirror.noteContainerSize(pointSize: pointSize, scale: displayScale)
+    }
+
+    private func becameVisible() {
+        pushClientSize(pointSize: containerSize)
+        mirror.setNeedsSizingPassIgnoringInputs()
+        mirror.seedActivePaneIfNeeded()
+    }
+}
+
+/// Zero-cost NSView planted inside the Herdr mirror subtree so the mirror has a
+/// window handle that survives portal churn (tmux ``MirrorHostProbe`` analogue).
+final class HerdrMirrorHostProbeView: NSView {
+    weak var mirror: RemoteHerdrWindowMirrorHost?
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        mirror?.setNeedsSizingPass()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else {
+            if mirror?.hostProbeView === self { mirror?.hostProbeView = nil }
+            return
+        }
+        mirror?.hostProbeView = self
+    }
+}
+
+private struct HerdrMirrorHostProbe: NSViewRepresentable {
+    let mirror: RemoteHerdrWindowMirrorHost
+
+    func makeNSView(context: Context) -> HerdrMirrorHostProbeView {
+        let view = HerdrMirrorHostProbeView()
+        view.mirror = mirror
+        mirror.hostProbeView = view
+        return view
+    }
+
+    func updateNSView(_ nsView: HerdrMirrorHostProbeView, context: Context) {
+        nsView.mirror = mirror
+        mirror.hostProbeView = nsView
     }
 }

@@ -323,6 +323,27 @@ final class RemoteHerdrSessionHost {
                 )
             }
         )
+        mirror.onClosePaneRequest = { [weak self] paneID in
+            Task { @MainActor in
+                await self?.closePane(paneID)
+            }
+        }
+        mirror.onFocusPaneRequest = { [weak self] paneID in
+            Task { @MainActor in
+                await self?.focusPane(paneID)
+            }
+        }
+        mirror.onSplitPaneRequest = { [weak self] paneID, vertical in
+            Task { @MainActor in
+                await self?.splitPane(paneID, vertical: vertical)
+            }
+        }
+        mirror.onResizePaneRequest = { [weak self] paneID, cols, rows in
+            Task { @MainActor in
+                await self?.resizePane(paneID, cols: cols, rows: rows)
+            }
+        }
+        mirror.observeWorkspaceBonsplitConfiguration()
         mirror.apply(window: window)
         windowMirrorByTabId[window.tabID] = mirror
         workspace.setRemoteHerdrWindowMirror(mirror, forPanelId: panelId)
@@ -331,6 +352,51 @@ final class RemoteHerdrSessionHost {
            let panel = workspace.panels[panelId] as? TerminalPanel {
             GhosttyApp.terminalSurfaceRegistry.unregister(panel.surface)
             panel.close()
+        }
+    }
+
+    private func closePane(_ paneID: String) async {
+        do {
+            try await client.closePane(paneID: paneID)
+        } catch {
+            Self.logger.error(
+                "remote-herdr: pane.close failed pane=\(paneID, privacy: .public)"
+            )
+        }
+    }
+
+    private func focusPane(_ paneID: String) async {
+        do {
+            guard let handshake = await client.currentHandshake() else { return }
+            try await client.focus(
+                nodeID: NestedNodeID(
+                    providerKind: .herdr,
+                    providerInstanceID: handshake.providerInstanceID,
+                    kind: .pane,
+                    rawID: paneID
+                )
+            )
+        } catch {
+            Self.logger.debug("remote-herdr: pane.focus failed")
+        }
+    }
+
+    private func splitPane(_ paneID: String, vertical: Bool) async {
+        let direction: RemoteHerdrSplitDirection = vertical ? .down : .right
+        do {
+            try await client.splitPane(paneID: paneID, direction: direction)
+        } catch {
+            Self.logger.error(
+                "remote-herdr: pane.split failed pane=\(paneID, privacy: .public)"
+            )
+        }
+    }
+
+    private func resizePane(_ paneID: String, cols: Int, rows: Int) async {
+        do {
+            try await client.resizePane(paneID: paneID, cols: cols, rows: rows)
+        } catch {
+            Self.logger.debug("remote-herdr: pane.resize failed")
         }
     }
 
