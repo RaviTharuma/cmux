@@ -1,0 +1,51 @@
+name: fold-herdr-mirror-into-10045
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/fold-herdr-mirror-into-10045.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/nested-topology-herdr-v1-becf
+          fetch-depth: 0
+
+      - name: Fold mirror host commits into #10045 head
+        env:
+          BUNDLE_URL: https://raw.githubusercontent.com/RaviTharuma/cmux-herdr/cursor/pr10045-coderabbit-replies-f1c1/docs/upstream/patches/herdr-fold-into-10045.bundle
+        run: |
+          set -euo pipefail
+          git config user.name "Ravi Tharuma"
+          git config user.email "25951435+RaviTharuma@users.noreply.github.com"
+          curl -fsSL "$BUNDLE_URL" -o /tmp/herdr-fold.bundle
+          git bundle verify /tmp/herdr-fold.bundle
+          git fetch /tmp/herdr-fold.bundle HEAD:refs/heads/herdr-fold-tip
+          BASE=$(git rev-parse HEAD)
+          # Cherry-pick only feature commits from the fold tip ancestry
+          # Tip order: 3 feat commits stacked on BASE
+          mapfile -t COMMITS < <(git rev-list --reverse --ancestry-path "${BASE}..herdr-fold-tip")
+          if [ "${#COMMITS[@]}" -eq 0 ]; then
+            # Fallback: cherry-pick by message when ancestry path empty after workflow noise
+            mapfile -t COMMITS < <(git rev-list --reverse herdr-fold-tip --grep='^feat' --max-count=10)
+          fi
+          echo "Will cherry-pick: ${COMMITS[*]}"
+          for sha in "${COMMITS[@]}"; do
+            msg=$(git log -1 --format=%s "$sha")
+            case "$msg" in
+              feat:*|feat\(*\)*) git cherry-pick "$sha" ;;
+              *) echo "skip $sha $msg" ;;
+            esac
+          done
+          if [ -f .github/workflows/fold-herdr-mirror-into-10045.yml ]; then
+            git rm -f .github/workflows/fold-herdr-mirror-into-10045.yml
+            git commit -m "chore: remove one-shot fold-herdr-mirror-into-10045 workflow" || true
+          fi
+          git push origin HEAD:cursor/nested-topology-herdr-v1-becf
+          echo "Pushed $(git rev-parse HEAD)"
