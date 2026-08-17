@@ -1,0 +1,94 @@
+name: sync-coderabbit-fixes
+on:
+  push:
+    paths:
+      - .github/workflows/sync-coderabbit-fixes.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/nested-topology-herdr-v1-becf
+          fetch-depth: 0
+
+      - name: Pull fixed sources from cmux-herdr staging
+        env:
+          BASE: https://raw.githubusercontent.com/RaviTharuma/cmux-herdr/cursor/pr10045-coderabbit-replies-f1c1/docs/upstream/patches/pr10045-files
+        run: |
+          set -euo pipefail
+          mapfile -t FILES <<'EOF'
+          Packages/macOS/CmuxNestedTopology/README.md
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrNestedTopologyClient.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrNestedTopologyClientConfiguration.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrProtocol17Compatibility.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrUnixSocketConnection.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedAssociationStore.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedAttachmentError.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedAttachmentIntentDescriptor.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedAttachmentRecord.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedCapabilitySet.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedDisplayStringSanitizer.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedEndpointSecurityError.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedParentMap.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedPluginWriterHandoff.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedSidebarSubtreeSnapshot.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyAttachmentCoordinator.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyLimits.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyReadNode.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyReadService.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyReducer.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologySnapshot.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyTwoPassRenderer.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyValidator.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedUnixSocketEndpointValidator.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/RemoteHerdrLayoutNode.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/RemoteHerdrPaneIO.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/RemoteHerdrSessionMirror.swift
+          Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/RemoteHerdrSizing.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/FakeHerdrUnixSocketServer.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/HerdrNestedTopologyClientTests.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/NestedAssociationTests.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/NestedTopologyAttachmentCoordinatorTests.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/NestedTopologyReadProjectionTests.swift
+          Packages/macOS/CmuxNestedTopology/Tests/CmuxNestedTopologyTests/RemoteHerdrWindowMirrorTests.swift
+          EOF
+          for path in "${FILES[@]}"; do
+            path="$(echo "$path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -z "$path" ] && continue
+            safe="${path//\//__}"
+            url="$BASE/$safe"
+            echo "fetch $path"
+            curl -fsSL "$url" -o "$path"
+            # sanity: no tiny probe leftovers
+            bytes=$(wc -c < "$path")
+            if [ "$bytes" -lt 200 ]; then
+              echo "ERROR: $path only $bytes bytes" >&2
+              exit 1
+            fi
+          done
+          # critical markers
+          grep -q 'eventIdleTimeout' Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrNestedTopologyClientConfiguration.swift
+          grep -q 'totalCells == 1' Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/RemoteHerdrSizing.swift
+          grep -q 'HerdrWireEventEnvelope' Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrProtocol17Compatibility.swift
+          grep -q 'NestedRestoreConfirmationReason' Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedAttachmentError.swift
+          test "$(wc -c < Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/HerdrProtocol17Compatibility.swift)" -gt 40000
+          test "$(wc -c < Packages/macOS/CmuxNestedTopology/Sources/CmuxNestedTopology/NestedTopologyAttachmentCoordinator.swift)" -gt 40000
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "Ravi Tharuma"
+          git config user.email "25951435+RaviTharuma@users.noreply.github.com"
+          git add Packages/macOS/CmuxNestedTopology
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git commit -m "fix(nested-topology): fully sync CodeRabbit finding fixes for #10045"
+          git push origin HEAD:cursor/nested-topology-herdr-v1-becf
