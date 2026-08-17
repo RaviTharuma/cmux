@@ -72,7 +72,7 @@ extension Array where Element == CuratedSettingEntry {
                 id: "canvas-snapping",
                 title: String(localized: "settings.app.canvasSnapping", defaultValue: "Canvas Snapping"),
                 paths: ["canvas.snappingEnabled"],
-                synonyms: "canvas.snappingEnabled canvas snap snapping unabled edges drag resize align panes freeform layout"
+                synonyms: "canvas.snappingEnabled canvas snap snapping enabled edges drag resize align panes freeform layout"
             ),
             .init(section: .app, id: "dock-badge", title: "Dock Badge", synonyms: "notifications.dockBadge badge dock unread count icon notifications red bubble"),
             .init(section: .app, id: "show-menu-bar", title: "Show in Menu Bar", synonyms: "notifications.showInMenuBar menubar menu bar status item tray extra"),
