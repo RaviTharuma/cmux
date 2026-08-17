@@ -55,10 +55,10 @@ public struct NestedTopologySnapshot: Hashable, Codable, Sendable {
         self.attachmentID = attachmentID
         self.hostStableSurfaceID = hostStableSurfaceID
         self.provider = provider
-        self.workspaces = NestedTopologyOrdering.sortedWorkspaces(workspaces)
-        self.tabs = NestedTopologyOrdering.sortedTabs(tabs)
-        self.panes = NestedTopologyOrdering.sortedPanes(panes)
-        self.agents = NestedTopologyOrdering.sortedAgents(agents)
+        self.workspaces = NestedTopologyOrdering().sortedWorkspaces(workspaces)
+        self.tabs = NestedTopologyOrdering().sortedTabs(tabs)
+        self.panes = NestedTopologyOrdering().sortedPanes(panes)
+        self.agents = NestedTopologyOrdering().sortedAgents(agents)
         self.focus = focus
     }
 
