@@ -200,7 +200,7 @@ struct NestedTopologyReadProjectionTests {
     @Test func controlSocketPayloadUsesSnakeCaseAndStructuredIDs() throws {
         var service = NestedTopologyReadService()
         let result = service.list(attachments: [liveAttachment(snapshot: NestedTopologyFixtures.snapshot())])
-        let object = try #require(NestedTopologyControlSocketPayload.foundationObject(for: result))
+        let object = try #require(NestedTopologyControlSocketPayload().foundationObject(for: result))
 
         #expect(object["encoding_version"] as? Int == 1)
         let capabilities = try #require(object["capabilities"] as? [String])
@@ -215,8 +215,8 @@ struct NestedTopologyReadProjectionTests {
         #expect(id["raw_id"] as? String == "w1:p1")
         #expect(pane["host_surface_id"] as? String == NestedTopologyFixtures.hostSurfaceID.uuidString)
         #expect(pane["parent_id"] != nil)
-        #expect(NestedTopologyControlSocketPayload.includeNestedRequested(["include_nested": true]))
-        #expect(!NestedTopologyControlSocketPayload.includeNestedRequested([:]))
+        #expect(NestedTopologyControlSocketPayload().includeNestedRequested(["include_nested": true]))
+        #expect(!NestedTopologyControlSocketPayload().includeNestedRequested([:]))
     }
 
     @Test func sidebarSubtreeBuildsHierarchyWithoutBonsplitIdentity() {
