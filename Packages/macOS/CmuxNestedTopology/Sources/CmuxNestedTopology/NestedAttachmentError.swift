@@ -47,10 +47,10 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "Nested provider attachment limit (\(limit)) exceeded."
         case .endpointRejected(let error):
             return error.errorDescription
-        case .incompatibleProvider(let detail):
-            return "Nested provider is incompatible: \(detail)"
-        case .providerFailed(let detail):
-            return "Nested provider connection failed: \(detail)"
+        case .incompatibleProvider:
+            return "Nested provider is incompatible."
+        case .providerFailed:
+            return "Nested provider connection failed."
         case .cancelled:
             return "Nested provider attachment cancelled."
         case .attachmentNotFound:
@@ -67,8 +67,8 @@ public enum NestedAttachmentError: Error, Hashable, Sendable, LocalizedError {
             return "Nested topology node was not found on the live attachment."
         case .wrongHostSurface:
             return "Nested topology target is bound to a different host surface."
-        case .restoreRequiresConfirmation(let reason):
-            return "Nested provider restore requires confirmation (\(reason))."
+        case .restoreRequiresConfirmation:
+            return "Nested provider restore requires confirmation."
         case .restoreSocketIdentityChanged:
             return "Nested provider socket identity changed; restore requires confirmation."
         case .restoreProviderUnavailable:
