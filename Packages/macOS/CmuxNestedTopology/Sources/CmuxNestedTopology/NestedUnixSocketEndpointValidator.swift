@@ -67,6 +67,9 @@ public struct NestedUnixSocketEndpointValidator: NestedEndpointValidating, Senda
     /// Important: do **not** run `standardizingPath` / `resolvingSymlinksInPath` on the
     /// full path. On Linux, swift-corelibs Foundation's `standardizingPath` follows a
     /// final symlink, which would defeat the no-symlink-confusion check.
+    ///
+    /// Parent resolution preserves OS symlink + `..` semantics: the final component is
+    /// taken from the raw path, and only the raw parent is symlink-resolved.
     public func canonicalize(_ path: String) throws -> String {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -84,17 +87,14 @@ public struct NestedUnixSocketEndpointValidator: NestedEndpointValidating, Senda
             )
         }
 
-        let collapsed = Self.collapseDotSegments(trimmed)
-        guard collapsed.hasPrefix("/") else {
-            throw NestedEndpointSecurityError.notAbsolutePath
-        }
-        let url = URL(fileURLWithPath: collapsed, isDirectory: false)
-        let last = url.lastPathComponent
-        guard !last.isEmpty, last != "/", last != "." , last != ".." else {
+        let last = (trimmed as NSString).lastPathComponent
+        guard !last.isEmpty, last != "/", last != ".", last != ".." else {
             throw NestedEndpointSecurityError.illegalPathBytes
         }
-        let parent = url.deletingLastPathComponent().path
-        // Resolve parent directory symlinks only; keep the final component literal.
+        let parent = (trimmed as NSString).deletingLastPathComponent
+        guard parent.hasPrefix("/") else {
+            throw NestedEndpointSecurityError.notAbsolutePath
+        }
         let resolvedParent = (parent as NSString).resolvingSymlinksInPath
         let candidate = (resolvedParent as NSString).appendingPathComponent(last)
         guard candidate.utf8.count <= Self.maxSocketPathUTF8ByteCount else {
@@ -103,24 +103,6 @@ public struct NestedUnixSocketEndpointValidator: NestedEndpointValidating, Senda
             )
         }
         return candidate
-    }
-
-    /// Collapses `.` / `..` / duplicate `/` without touching the filesystem.
-    private static func collapseDotSegments(_ path: String) -> String {
-        var stack: [String] = []
-        for segment in path.split(separator: "/", omittingEmptySubsequences: true) {
-            switch segment {
-            case ".":
-                continue
-            case "..":
-                if !stack.isEmpty {
-                    stack.removeLast()
-                }
-            default:
-                stack.append(String(segment))
-            }
-        }
-        return "/" + stack.joined(separator: "/")
     }
 
     private func lstatSocket(at path: String) throws -> stat {
