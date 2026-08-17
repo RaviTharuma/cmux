@@ -274,7 +274,9 @@ public struct NestedTopologyReducer: Sendable {
                 updated.displayTitle = displayTitle
                 return updated
             }
-            return rebuilt(from: current, workspaces: workspaces, tabs: current.tabs, panes: current.panes, agents: current.agents, focus: current.focus)
+            let next = rebuilt(from: current, workspaces: workspaces, tabs: current.tabs, panes: current.panes, agents: current.agents, focus: current.focus)
+            try validator.validateSnapshot(next)
+            return next
         case .tab:
             try validator.validateNodeID(id, expectedKind: .tab)
             guard current.tab(id: id) != nil else {
@@ -286,7 +288,9 @@ public struct NestedTopologyReducer: Sendable {
                 updated.displayTitle = displayTitle
                 return updated
             }
-            return rebuilt(from: current, workspaces: current.workspaces, tabs: tabs, panes: current.panes, agents: current.agents, focus: current.focus)
+            let next = rebuilt(from: current, workspaces: current.workspaces, tabs: tabs, panes: current.panes, agents: current.agents, focus: current.focus)
+            try validator.validateSnapshot(next)
+            return next
         case .pane:
             try validator.validateNodeID(id, expectedKind: .pane)
             guard current.pane(id: id) != nil else {
@@ -298,7 +302,9 @@ public struct NestedTopologyReducer: Sendable {
                 updated.displayTitle = displayTitle
                 return updated
             }
-            return rebuilt(from: current, workspaces: current.workspaces, tabs: current.tabs, panes: panes, agents: current.agents, focus: current.focus)
+            let next = rebuilt(from: current, workspaces: current.workspaces, tabs: current.tabs, panes: panes, agents: current.agents, focus: current.focus)
+            try validator.validateSnapshot(next)
+            return next
         case .agent:
             try validator.validateNodeID(id, expectedKind: .agent)
             guard current.agent(id: id) != nil else {
@@ -310,7 +316,9 @@ public struct NestedTopologyReducer: Sendable {
                 updated.displayTitle = displayTitle
                 return updated
             }
-            return rebuilt(from: current, workspaces: current.workspaces, tabs: current.tabs, panes: current.panes, agents: agents, focus: current.focus)
+            let next = rebuilt(from: current, workspaces: current.workspaces, tabs: current.tabs, panes: current.panes, agents: agents, focus: current.focus)
+            try validator.validateSnapshot(next)
+            return next
         }
     }
 
