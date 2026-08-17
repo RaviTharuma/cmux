@@ -268,6 +268,7 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
         case name, kind, command, cwd, checkpointId, source
         case environment, autoResume, approvalPolicy, approvalRecordId
         case launchCommand, permissionMode, launchFlavor, updatedAt
+        case resumeEvidenceProvenance
     }
 
     var name: String?
@@ -280,6 +281,9 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
     var launchCommand: AgentLaunchCommandSnapshot?
     var permissionMode: String?
     var autoResume: Bool?
+    /// Verified Codex hook provenance carried into the app-owned atomic gate.
+    /// Non-Codex and legacy bindings leave this unset.
+    var resumeEvidenceProvenance: String?
     var approvalPolicy: SurfaceResumeApprovalPolicy?
     var approvalRecordId: String?
     var launchFlavor: SurfaceResumeLaunchFlavor
@@ -298,6 +302,7 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
         launchCommand: AgentLaunchCommandSnapshot? = nil,
         permissionMode: String? = nil,
         autoResume: Bool? = nil,
+        resumeEvidenceProvenance: String? = nil,
         approvalPolicy: SurfaceResumeApprovalPolicy? = nil,
         approvalRecordId: String? = nil,
         launchFlavor: SurfaceResumeLaunchFlavor = .local,
@@ -320,6 +325,11 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
         self.launchCommand = Self.normalizedLaunchCommand(launchCommand)
         self.permissionMode = Self.normalized(permissionMode)
         self.autoResume = autoResume
+        let retainsCodexEvidence = normalizedSource?.lowercased() == "agent-hook"
+            && normalizedKind?.lowercased() == "codex"
+        self.resumeEvidenceProvenance = retainsCodexEvidence
+            ? Self.normalized(resumeEvidenceProvenance)
+            : nil
         self.approvalPolicy = approvalPolicy
         self.approvalRecordId = Self.normalized(approvalRecordId)
         self.launchFlavor = launchFlavor
@@ -343,6 +353,7 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
             ),
             permissionMode: try container.decodeIfPresent(String.self, forKey: .permissionMode),
             autoResume: try container.decodeIfPresent(Bool.self, forKey: .autoResume),
+            resumeEvidenceProvenance: try container.decodeIfPresent(String.self, forKey: .resumeEvidenceProvenance),
             approvalPolicy: try container.decodeIfPresent(SurfaceResumeApprovalPolicy.self, forKey: .approvalPolicy),
             approvalRecordId: try container.decodeIfPresent(String.self, forKey: .approvalRecordId),
             launchFlavor: decodedLaunchFlavor ?? .local,
@@ -428,6 +439,7 @@ struct SurfaceResumeBindingSnapshot: Codable, Equatable, Sendable {
     ) -> AgentLaunchCommandSnapshot? {
         guard var launchCommand else { return nil }
         launchCommand.workingDirectory = normalized(launchCommand.workingDirectory)
+        launchCommand.verificationHome = normalized(launchCommand.verificationHome)
         launchCommand.environment = normalizedEnvironment(launchCommand.environment)
         return launchCommand
     }

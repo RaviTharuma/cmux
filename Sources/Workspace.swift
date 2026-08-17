@@ -2192,6 +2192,8 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
 
     /// The bonsplit controller managing the split panes for this workspace
     let bonsplitController: BonsplitController
+    /// Process/window composition capability registry shared with every pane target.
+    let tabDragTransferRegistry: TabDragTransferRegistry
 
     /// Backing store for `dockSplit`, created on first access. Kept optional so
     /// workspace teardown can tear down the Dock only when it was actually used
@@ -2216,6 +2218,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
                     remoteStatus: self.browserRemoteWorkspaceStatusSnapshot()
                 )
             },
+            tabDragTransferRegistry: tabDragTransferRegistry,
             settings: settings,
             agentSessionAutoResumeDefaults: agentSessionAutoResumeDefaults,
             agentChatResumeIntentRecorder: agentChatResumeIntentRecorder
@@ -2924,13 +2927,29 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         true
     }
 
+    /// Resolves a terminal surface color against the same concrete scheme the
+    /// live Ghostty app selected. Workspace/Bonsplit objects can be created
+    /// before a SwiftUI `WindowAppearanceSnapshot` is mounted, so they use
+    /// this composition seam instead of AppKit's ambient window appearance.
+    nonisolated static func resolvedTerminalChromeBackgroundColor(
+        backgroundColor: NSColor,
+        backgroundOpacity: Double
+    ) -> NSColor {
+        WindowAppearanceSnapshot.resolvedChromeBackgroundColor(
+            backgroundColor: backgroundColor,
+            opacity: backgroundOpacity,
+            colorScheme: GhosttyApp.shared.effectiveTerminalColorSchemePreference == .dark ? .dark : .light
+        )
+    }
+
     nonisolated static func bonsplitChromeHex(
         backgroundColor: NSColor,
         backgroundOpacity: Double,
-        sharesWindowBackdrop: Bool = false
+        sharesWindowBackdrop: Bool = false,
+        chromeBackgroundColor: NSColor? = nil
     ) -> String {
         _ = sharesWindowBackdrop
-        let themedColor = WindowAppearanceSnapshot.compositedTerminalColor(
+        let themedColor = chromeBackgroundColor ?? WindowAppearanceSnapshot.compositedTerminalColor(
             backgroundColor: backgroundColor,
             opacity: backgroundOpacity
         )
@@ -2952,15 +2971,23 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         backgroundOpacity: Double,
         sharesWindowBackdrop: Bool = false,
         renderingMode: GhosttyTerminalBackdropRenderingMode = .windowHostBackdrop,
-        paneBorderColorHex: String? = nil
+        paneBorderColorHex: String? = nil,
+        chromeBackgroundColor: NSColor? = nil
     ) -> BonsplitConfiguration.Appearance.ChromeColors {
         let surfaceHex = bonsplitChromeHex(
             backgroundColor: backgroundColor,
             backgroundOpacity: backgroundOpacity,
-            sharesWindowBackdrop: sharesWindowBackdrop
+            sharesWindowBackdrop: sharesWindowBackdrop,
+            chromeBackgroundColor: chromeBackgroundColor
         )
         let defaultBorderHex = WindowChromeColorResolver()
-            .separatorColor(forChromeBackground: backgroundColor)
+            .separatorColor(
+                forChromeBackground: chromeBackgroundColor
+                    ?? WindowAppearanceSnapshot.compositedTerminalColor(
+                        backgroundColor: backgroundColor,
+                        opacity: backgroundOpacity
+                    )
+            )
             .hexString(includeAlpha: true)
         let borderHex = PaneChromeSettings.resolvedPaneBorderHex(
             configuredHex: paneBorderColorHex,
@@ -3069,7 +3096,11 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             backgroundOpacity: backgroundOpacity,
             sharesWindowBackdrop: sharesWindowBackdrop,
             renderingMode: renderingMode,
-            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex()
+            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex(),
+            chromeBackgroundColor: Self.resolvedTerminalChromeBackgroundColor(
+                backgroundColor: backgroundColor,
+                backgroundOpacity: backgroundOpacity
+            )
         )
         return BonsplitConfiguration.Appearance(
             tabBarHeight: WindowChromeMetrics.bonsplitTabBarHeight,
@@ -3093,7 +3124,11 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             backgroundOpacity: config.backgroundOpacity,
             sharesWindowBackdrop: sharesWindowBackdrop,
             renderingMode: renderingMode,
-            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex()
+            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex(),
+            chromeBackgroundColor: Self.resolvedTerminalChromeBackgroundColor(
+                backgroundColor: config.backgroundColor,
+                backgroundOpacity: config.backgroundOpacity
+            )
         )
         let nextTabTitleFontSize = config.surfaceTabBarFontSize
         let currentAppearance = bonsplitController.configuration.appearance
@@ -3152,7 +3187,11 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             backgroundOpacity: backgroundOpacity,
             sharesWindowBackdrop: sharesWindowBackdrop,
             renderingMode: renderingMode,
-            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex()
+            paneBorderColorHex: PaneChromeSettings.paneBorderColorHex(),
+            chromeBackgroundColor: Self.resolvedTerminalChromeBackgroundColor(
+                backgroundColor: backgroundColor,
+                backgroundOpacity: backgroundOpacity
+            )
         )
         let currentChromeColors = bonsplitController.configuration.appearance.chromeColors
         let currentUsesSharedBackdrop = bonsplitController.configuration.appearance.usesSharedBackdrop
@@ -3207,6 +3246,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         initialBrowserTransparentBackground: Bool = false,
         workspaceEnvironment: [String: String] = [:],
         allowTextBoxFocusDefault: Bool = true,
+        tabDragTransferRegistry: TabDragTransferRegistry? = nil,
         settings: any SettingsReading = UserDefaultsSettingsClient(defaults: .standard),
         closeTabWarningDefaults: UserDefaults = .standard,
         agentSessionAutoResumeDefaults: UserDefaults = .standard,
@@ -3216,6 +3256,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         agentChatResumeIntentRecorder: any AgentChatResumeIntentRecording = AgentChatTranscriptResumeIntentRecorder(),
         nativeSSHConnectionBroker: NativeSSHConnectionBroker = NativeSSHConnectionBroker()
     ) {
+        let tabDragTransferRegistry = tabDragTransferRegistry ?? TabDragTransferRegistry()
         let resolvedID = id ?? UUID()
         let restoredAgentLifecycle = RestoredAgentLifecycleCoordinator()
         self.id = resolvedID
@@ -3226,6 +3267,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         self.closeTabWarningDefaults = closeTabWarningDefaults
         self.agentSessionAutoResumeDefaults = agentSessionAutoResumeDefaults
         self.agentChatResumeIntentRecorder = agentChatResumeIntentRecorder
+        self.tabDragTransferRegistry = tabDragTransferRegistry
         self.terminalStartupRestoreCoordinator = TerminalStartupRestoreCoordinator(
             workspaceID: resolvedID,
             lifecycle: restoredAgentLifecycle,
@@ -3266,7 +3308,10 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             newTabPosition: .current,
             appearance: appearance
         )
-        self.bonsplitController = BonsplitController(configuration: config)
+        self.bonsplitController = BonsplitController(
+            configuration: config,
+            tabDragTransferRegistry: tabDragTransferRegistry
+        )
         paneTree.attach(host: self)
         surfaceList.attach(tree: self)
         bonsplitController.contextMenuShortcuts = Self.buildContextMenuShortcuts()
@@ -5198,6 +5243,15 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
               !startupInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
+        // This check and the assignment are one MainActor mutation, so
+        // concurrent hook publications cannot observe-then-downgrade a TUI
+        // binding between separate get/set socket calls.
+        guard binding.allowsCodexAgentHookReplacement(
+            of: surfaceResumeBindingsByPanelId[panelId]
+        ) else {
+            return false
+        }
+        let previousRestorableAgent = restoredAgentSnapshotsByPanelId[panelId]
         invalidateRestoredAgentLifecycleIfBindingIsReplaced(
             by: binding,
             panelId: panelId
@@ -5213,6 +5267,12 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             || (previous.launchCommand == nil && binding.launchCommand == nil
                 && previous.command != binding.command) {
             restoredResumeSessionWorkingDirectoriesByPanelId.removeValue(forKey: panelId)
+        }
+        if let restorableAgent = binding.managedRestorableAgentSnapshot(
+            replacing: previousRestorableAgent
+        ) {
+            restoredAgentLifecycle.setSnapshot(restorableAgent, panelId: panelId)
+            invalidatedRestoredAgentFingerprintsByPanelId.removeValue(forKey: panelId)
         }
         surfaceResumeBindingsByPanelId[panelId] = binding
         return true
@@ -11426,7 +11486,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         _ = failure.runModal()
     }
 
-    private func handleSessionDrop(
+    func handleSessionDrop(
         entry: SessionEntry,
         destination: BonsplitController.ExternalTabDropRequest.Destination
     ) -> Bool {
@@ -11809,13 +11869,8 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
     }
 
     func handleExternalTabDrop(_ request: BonsplitController.ExternalTabDropRequest) -> Bool {
-        // Session-index drag → spawn a brand new terminal at the destination instead
-        // of moving an existing tab.
-        if let entry = SessionDragRegistry.shared.consume(id: request.tabId.uuid) {
-            return handleSessionDrop(entry: entry, destination: request.destination)
-        }
-        if let entry = FilePreviewDragRegistry.shared.consume(id: request.tabId.uuid) {
-            return handleFilePreviewDrop(entry: entry, destination: request.destination)
+        if let handled = performRegisteredPaneTransferDrop(request) {
+            return handled
         }
 
         guard let app = AppDelegate.shared else { return false }
