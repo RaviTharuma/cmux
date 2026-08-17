@@ -105,3 +105,191 @@ public struct HerdrProtocol17Compatibility: Sendable {
             instanceIdentityIsDurable: instanceIdentityIsDurable
         )
     }
+
+    /// Maps a protocol-17 `session.snapshot` payload into the provider-neutral model.
+    public func makeSnapshot(
+        from wire: HerdrWireSessionSnapshot,
+        handshake: NestedProviderHandshake,
+        attachmentID: UUID,
+        hostStableSurfaceID: UUID,
+        limits: NestedTopologyLimits
+    ) throws -> NestedTopologySnapshot {
+        let instance = handshake.providerInstanceID
+        var workspaces: [NestedWorkspaceNode] = []
+        workspaces.reserveCapacity(wire.workspaces.count)
+        for (index, workspace) in wire.workspaces.enumerated() {
+            let rawID = workspace.workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("workspaces[].workspace_id")
+            }
+            workspaces.append(
+                NestedWorkspaceNode(
+                    id: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .workspace,
+                        rawID: rawID
+                    ),
+                    displayTitle: Self.displayTitle(workspace.label, fallback: rawID),
+                    orderIndex: max(0, max(workspace.number - 1, index))
+                )
+            )
+        }
+
+        var tabs: [NestedTabNode] = []
+        tabs.reserveCapacity(wire.tabs.count)
+        for (index, tab) in wire.tabs.enumerated() {
+            let rawID = tab.tabID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let workspaceRawID = tab.workspaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("tabs[].tab_id")
+            }
+            guard !workspaceRawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("tabs[].workspace_id")
+            }
+            tabs.append(
+                NestedTabNode(
+                    id: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .tab,
+                        rawID: rawID
+                    ),
+                    workspaceID: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .workspace,
+                        rawID: workspaceRawID
+                    ),
+                    displayTitle: Self.displayTitle(tab.label, fallback: rawID),
+                    orderIndex: max(0, max(tab.number - 1, index))
+                )
+            )
+        }
+
+        var panes: [NestedPaneNode] = []
+        panes.reserveCapacity(wire.panes.count)
+        var paneOrderByTab: [String: Int] = [:]
+        for pane in wire.panes {
+            let rawID = pane.paneID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tabRawID = pane.tabID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("panes[].pane_id")
+            }
+            guard !tabRawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("panes[].tab_id")
+            }
+            let order = paneOrderByTab[tabRawID, default: 0]
+            paneOrderByTab[tabRawID] = order + 1
+            panes.append(
+                NestedPaneNode(
+                    id: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .pane,
+                        rawID: rawID
+                    ),
+                    tabID: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .tab,
+                        rawID: tabRawID
+                    ),
+                    displayTitle: Self.paneDisplayTitle(pane),
+                    orderIndex: order
+                )
+            )
+        }
+
+        var agents: [NestedAgentNode] = []
+        agents.reserveCapacity(wire.agents.count)
+        var agentOrderByPane: [String: Int] = [:]
+        for agent in wire.agents {
+            let paneRawID = agent.paneID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !paneRawID.isEmpty else {
+                throw NestedTopologyProviderError.missingRequiredField("agents[].pane_id")
+            }
+            // Herdr agents are addressed by pane id; use the pane id as the opaque agent raw id.
+            let order = agentOrderByPane[paneRawID, default: 0]
+            agentOrderByPane[paneRawID] = order + 1
+            let rawStatus = agent.agentStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let status = NestedAgentStatus.normalized(from: rawStatus) else {
+                throw NestedTopologyProviderError.missingRequiredField("agents[].agent_status")
+            }
+            agents.append(
+                NestedAgentNode(
+                    id: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .agent,
+                        rawID: paneRawID
+                    ),
+                    paneID: NestedNodeID(
+                        providerKind: .herdr,
+                        providerInstanceID: instance,
+                        kind: .pane,
+                        rawID: paneRawID
+                    ),
+                    displayTitle: Self.agentDisplayTitle(agent, fallback: paneRawID),
+                    status: status,
+                    providerRawStatus: rawStatus,
+                    orderIndex: order
+                )
+            )
+        }
+
+        let focus = NestedFocus(
+            workspaceID: wire.focusedWorkspaceID.flatMap { raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return NestedNodeID(
+                    providerKind: .herdr,
+                    providerInstanceID: instance,
+                    kind: .workspace,
+                    rawID: trimmed
+                )
+            },
+            tabID: wire.focusedTabID.flatMap { raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return NestedNodeID(
+                    providerKind: .herdr,
+                    providerInstanceID: instance,
+                    kind: .tab,
+                    rawID: trimmed
+                )
+            },
+            paneID: wire.focusedPaneID.flatMap { raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return NestedNodeID(
+                    providerKind: .herdr,
+                    providerInstanceID: instance,
+                    kind: .pane,
+                    rawID: trimmed
+                )
+            },
+            agentID: nil
+        )
+
+        let snapshot = NestedTopologySnapshot(
+            attachmentID: attachmentID,
+            hostStableSurfaceID: hostStableSurfaceID,
+            provider: handshake,
+            workspaces: workspaces,
+            tabs: tabs,
+            panes: panes,
+            agents: agents,
+            focus: focus
+        )
+        var reducer = NestedTopologyReducer(
+            providerKind: .herdr,
+            providerInstanceID: instance,
+            limits: limits
+        )
+        _ = try reducer.apply(.replaceSnapshot(snapshot))
+        guard let validated = reducer.snapshot else {
+            throw NestedTopologyProviderError.missingRequiredField("snapshot")
+        }
+        return validated
+    }
