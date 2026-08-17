@@ -43,8 +43,7 @@ public struct RemoteHerdrHostAction: Hashable, Sendable {
 
 /// Linearizes one reconcile + impose pass into host verbs.
 ///
-/// AppKit applies these. This type does not import Bonsplit. Lane B owns
-/// this file — do not fold it into #10045 while CodeRabbit (N/5) is in flight.
+/// AppKit applies these. This type does not import Bonsplit.
 public enum RemoteHerdrHostApply {
     /// Walk the binary tree and emit one ``impose_divider`` per split.
     public static func dividerActions(
