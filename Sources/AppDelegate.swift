@@ -553,6 +553,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var aboutTitlebarDebugStore: AboutTitlebarDebugStore { debugWindowsCoordinator.aboutTitlebarStore }
     /// Coordinates remote tmux (`ssh … tmux -CC`) mirroring; composition-root owned.
     let remoteTmuxController = RemoteTmuxController()
+    /// Coordinates native Herdr Unix-socket mirroring (ssh-tmux parity host); composition-root owned.
+    let remoteHerdrController = RemoteHerdrController()
     /// Owns the process-scoped idle-sleep assertion shared by every local and
     /// mobile entrypoint.
     let caffeineController = CaffeineController()
@@ -2265,6 +2267,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         sentryStopMemoryContextRefresh()
         // Plain quit detaches local ssh clients; explicit close already killed marked sessions.
         remoteTmuxController.detachAll()
+        // Herdr native mirrors detach without server.stop.
+        remoteHerdrController.detachAll()
         // Nested topology teardown is awaited from the confirmed-termination
         // cleanup task so session snapshots see published intents first.
         // Best-effort presence goodbye; unclean exits are covered by the
