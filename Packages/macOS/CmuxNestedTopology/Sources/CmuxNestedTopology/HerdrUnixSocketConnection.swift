@@ -53,9 +53,8 @@ final class HerdrUnixSocketConnection: @unchecked Sendable {
             }
         }
 
-        let addrLen = socklen_t(
-            MemoryLayout.size(ofValue: address.sun_family) + pathBytes.count
-        )
+        // Darwin sockaddr_un leads with sun_len; sizeof(sun_family) alone is one byte short.
+        let addrLen = socklen_t(sunPathOffset + pathBytes.count)
         let connectResult = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 connect(socketFD, $0, addrLen)
