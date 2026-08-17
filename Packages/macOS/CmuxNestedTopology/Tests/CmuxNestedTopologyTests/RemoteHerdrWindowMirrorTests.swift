@@ -238,6 +238,7 @@ import Testing
         #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 400, axisSpan: 800, totalCells: 100) == 50)
         #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 0, axisSpan: 800, totalCells: 100) == 5)
         #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 800, axisSpan: 800, totalCells: 100) == 95)
+        #expect(RemoteHerdrSizing().resizeCells(draggedExtent: 400, axisSpan: 800, totalCells: 1) == 1)
     }
 
     @Test func outputDeltaIncrementalAndRedraw() {
