@@ -19,33 +19,23 @@ public enum NestedDisplayStringSanitizer: Sendable {
         maxUTF8ByteCount: Int = defaultMaxUTF8ByteCount
     ) -> String {
         precondition(maxUTF8ByteCount >= 0)
-        var scalars: [UnicodeScalar] = []
+        // Bound materialization to the output budget; never retain the full input.
+        var scalars: [Unicode.Scalar] = []
         scalars.reserveCapacity(min(value.unicodeScalars.count, maxUTF8ByteCount))
+        var byteCount = 0
         for scalar in value.unicodeScalars {
             if scalar.value < 0x20 || scalar.value == 0x7F {
                 continue
             }
-            scalars.append(scalar)
-        }
-        var cleaned = String(String.UnicodeScalarView(scalars))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleaned.utf8.count > maxUTF8ByteCount {
-            cleaned = truncateToUTF8ByteCount(cleaned, maxUTF8ByteCount: maxUTF8ByteCount)
-        }
-        return cleaned
-    }
-
-    private static func truncateToUTF8ByteCount(_ value: String, maxUTF8ByteCount: Int) -> String {
-        var byteCount = 0
-        var end = value.startIndex
-        for (index, character) in zip(value.indices, value) {
-            let characterBytes = String(character).utf8.count
-            if byteCount + characterBytes > maxUTF8ByteCount {
+            let piece = String(scalar)
+            let pieceBytes = piece.utf8.count
+            if byteCount + pieceBytes > maxUTF8ByteCount {
                 break
             }
-            byteCount += characterBytes
-            end = value.index(after: index)
+            scalars.append(scalar)
+            byteCount += pieceBytes
         }
-        return String(value[..<end])
+        return String(String.UnicodeScalarView(scalars))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
