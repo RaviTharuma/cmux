@@ -24,14 +24,22 @@ public struct NestedAssociationStore: Hashable, Codable, Sendable {
     }
 
     /// Records a successful heuristic/prompt association and marks heuristic satisfied.
+    ///
+    /// Once satisfied, subsequent calls leave the first parentID unchanged.
     public mutating func markHeuristicSatisfied(
         for key: NestedAssociationKey,
         parentID: NestedNodeID?
     ) {
         var record = records[key] ?? NestedAssociationRecord(key: key)
+        guard !record.heuristicSatisfied else { return }
         record.parentID = parentID ?? record.parentID
         record.heuristicSatisfied = true
         records[key] = record
+    }
+
+    /// Drops association records for a superseded provider instance generation.
+    public mutating func drop(providerInstanceGeneration: NestedProviderInstanceID) {
+        records = records.filter { $0.key.providerInstanceGeneration != providerInstanceGeneration }
     }
 
     /// Installs or updates an explicit native-title lock.
