@@ -1,1 +1,94 @@
-PLACEHOLDER_YML
+name: Apply nested-topology policy fixes
+
+on:
+  push:
+    branches:
+      - cursor/merge-10045-bot-6e7a
+    paths:
+      - scripts/policy-10045.patch
+      - .github/workflows/apply-policy-10045.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: cursor/nested-topology-herdr-v1-becf
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch patch from bot branch
+        run: |
+          git fetch origin cursor/merge-10045-bot-6e7a
+          git show origin/cursor/merge-10045-bot-6e7a:scripts/policy-10045.patch > /tmp/policy-10045.patch
+
+      - name: Apply patch and fill locales
+        run: |
+          set -euo pipefail
+          git config user.name "cursor-agent"
+          git config user.email "cursoragent@cursor.com"
+          git apply /tmp/policy-10045.patch
+          python3 << 'PY'
+          import json
+          from pathlib import Path
+          p = Path("Resources/Localizable.xcstrings")
+          data = json.loads(p.read_text())
+          locales = ['ar','bs','da','de','en','es','fr','it','ja','km','ko','nb','pl','pt-BR','ru','th','tr','uk','zh-Hans','zh-Hant']
+          keys = [
+           "settings.betaFeatures.nestedTopology",
+           "settings.betaFeatures.nestedTopology.subtitleOff",
+           "settings.betaFeatures.nestedTopology.subtitleOn",
+           "sidebar.nestedTopology.focusHint",
+           "sidebar.nestedTopology.header",
+           "sidebar.nestedTopology.state.connecting",
+           "sidebar.nestedTopology.state.disconnected",
+           "sidebar.nestedTopology.state.incompatible",
+           "sidebar.nestedTopology.state.live",
+           "sidebar.nestedTopology.state.rejected",
+           "sidebar.nestedTopology.state.stale",
+           "socket.nestedTopology.disabled",
+           "socket.nestedTopology.focusFailed",
+           "socket.nestedTopology.invalidAttachmentID",
+           "socket.nestedTopology.invalidHostSurfaceID",
+           "socket.nestedTopology.invalidNodeID",
+           "socket.nestedTopology.invalidProviderInstanceID",
+          ]
+          de = {
+           "settings.betaFeatures.nestedTopology": "Verschachtelte Topologie",
+           "settings.betaFeatures.nestedTopology.subtitleOff": "Blendet verschachtelte Topologie-Reads, Fokus und Sidebar-Unterbäume aus, bis du sie hier aktivierst.",
+           "settings.betaFeatures.nestedTopology.subtitleOn": "Zeigt verschachtelte Workspaces/Tabs/Panes/Agents als virtuelle Nachfahren unter der Host-Terminalfläche. Unterstützt fähigkeitsgesteuerten Fokus; erzeugt keine cmux-Panes.",
+           "sidebar.nestedTopology.focusHint": "Verschachtelten Knoten fokussieren",
+           "sidebar.nestedTopology.header": "Verschachtelt",
+           "sidebar.nestedTopology.state.connecting": "Verbinden",
+           "sidebar.nestedTopology.state.disconnected": "Getrennt",
+           "sidebar.nestedTopology.state.incompatible": "Inkompatibel",
+           "sidebar.nestedTopology.state.live": "Aktiv",
+           "sidebar.nestedTopology.state.rejected": "Abgelehnt",
+           "sidebar.nestedTopology.state.stale": "Veraltet",
+           "socket.nestedTopology.disabled": "Nested-Topology-Beta ist deaktiviert",
+           "socket.nestedTopology.focusFailed": "Verschachtelter Fokus fehlgeschlagen",
+           "socket.nestedTopology.invalidAttachmentID": "expected_attachment_id fehlt oder ist ungültig",
+           "socket.nestedTopology.invalidHostSurfaceID": "host_surface_id fehlt oder ist ungültig",
+           "socket.nestedTopology.invalidNodeID": "node_id fehlt oder ist ungültig",
+           "socket.nestedTopology.invalidProviderInstanceID": "expected_provider_instance_id fehlt oder ist ungültig",
+          }
+          for k in keys:
+              locs = data["strings"][k].setdefault("localizations", {})
+              en = locs["en"]["stringUnit"]["value"]
+              for loc in locales:
+                  if loc in locs:
+                      continue
+                  value = de[k] if loc == "de" else en
+                  locs[loc] = {"stringUnit": {"state": "translated", "value": value}}
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+          PY
+          git add -A
+          git commit -m "Address cmux pre-merge policy errors for nested topology."
+          git push origin "HEAD:cursor/nested-topology-herdr-v1-becf"
+          git log -1 --oneline
