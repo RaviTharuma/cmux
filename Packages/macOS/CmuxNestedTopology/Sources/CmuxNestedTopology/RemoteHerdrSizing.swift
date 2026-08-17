@@ -38,6 +38,7 @@ public struct RemoteHerdrSizing: Sendable {
         guard axisSpan > 0, totalCells >= 1 else { return 1 }
         let fraction = min(0.95, max(0.05, draggedExtent / axisSpan))
         let cells = Int((fraction * Double(totalCells)).rounded())
-        return min(totalCells - 1, max(1, cells))
+        // totalCells == 1 must still yield 1 (never 0) for pane.resize.
+        return min(max(1, totalCells - 1), max(1, cells))
     }
 }
