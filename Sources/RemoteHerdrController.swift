@@ -139,6 +139,37 @@ final class RemoteHerdrController {
         releaseHandoffIfNeeded(host: entry.value)
     }
 
+    /// Whether `surfaceId` is a pane of a mirrored Herdr window.
+    func isMirrorPaneSurface(_ surfaceId: UUID) -> Bool {
+        sessionHosts.values.contains { $0.containsSurface(surfaceId) }
+    }
+
+    /// Paste single-line text into the Herdr pane behind `surfaceId`.
+    @discardableResult
+    func pasteIntoMirror(surfaceId: UUID, text: String) async -> Bool {
+        for host in sessionHosts.values {
+            if await host.pasteIntoMirror(surfaceId: surfaceId, text: text) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Route a split request from a mirrored Ghostty surface to `pane.split`.
+    @discardableResult
+    func handleMirrorSplitRequested(
+        surfaceId: UUID,
+        vertical: Bool
+    ) async -> Bool {
+        for host in sessionHosts.values where host.containsSurface(surfaceId) {
+            return await host.handleMirrorSplitRequested(
+                surfaceId: surfaceId,
+                vertical: vertical
+            )
+        }
+        return false
+    }
+
     func beginAttach(endpointHash: String) -> Bool {
         attachRegistry.beginAttach(endpointHash)
     }

@@ -78,13 +78,15 @@ extension RemoteHerdrWindowMirrorHost {
             initialDividerPosition: fraction
         ) else { return build(first, inPane: pane) }
         _ = build(first, inPane: pane)
-        _ = build(combined(children: rest, orientation: orientation), inPane: restPane)
+        if let restNode = combined(children: rest, orientation: orientation) {
+            _ = build(restNode, inPane: restPane)
+        }
         return pane
     }
 
-    func combined(children: [RemoteHerdrLayoutNode], orientation: SplitOrientation) -> RemoteHerdrLayoutNode {
+    func combined(children: [RemoteHerdrLayoutNode], orientation: SplitOrientation) -> RemoteHerdrLayoutNode? {
         guard let first = children.first else {
-            return RemoteHerdrLayoutNode(width: 1, height: 1, x: 0, y: 0, content: .pane(""))
+            return nil
         }
         guard children.count > 1 else { return first }
         let width = children.map(\.width).reduce(0, +)

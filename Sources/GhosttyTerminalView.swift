@@ -7417,6 +7417,9 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         if AppDelegate.shared?.remoteTmuxController.isMirrorPaneSurface(surfaceId) == true {
             return true
         }
+        if AppDelegate.shared?.remoteHerdrController.isMirrorPaneSurface(surfaceId) == true {
+            return true
+        }
         guard let tabId,
               let app = AppDelegate.shared,
               let manager = app.tabManagerFor(tabId: tabId) ?? app.tabManager,
@@ -7442,6 +7445,17 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         if let controller = AppDelegate.shared?.remoteTmuxController,
            controller.isMirrorPaneSurface(surfaceId) {
             return controller.handleMirrorSplitRequested(surfaceId: surfaceId, vertical: !direction.isHorizontal, focusIntent: .focusCreatedPane)
+        }
+        if let herdr = AppDelegate.shared?.remoteHerdrController,
+           herdr.isMirrorPaneSurface(surfaceId) {
+            // Fire-and-forget async split; UI expects Bool — schedule and report accepted.
+            Task { @MainActor in
+                _ = await herdr.handleMirrorSplitRequested(
+                    surfaceId: surfaceId,
+                    vertical: !direction.isHorizontal
+                )
+            }
+            return true
         }
         guard let tabId,
               let app = AppDelegate.shared,

@@ -39,12 +39,13 @@ This package owns:
   - ``RemoteHerdrSessionMirror`` / ``RemoteHerdrWindowMirror`` / layout + sizing helpers
   - capability-gated pane I/O (`pane.send` / `split` / `resize` / `close` / `read`)
 
-It does **not** mutate cmux `Workspace` / Bonsplit ownership of provider panes,
-persist nested node snapshots / output / credentials into session manifests, or
-promote provider descendants into Ghostty/Bonsplit PTYs. Herdr descendants remain
-virtual under one host surface.
+It does **not** persist nested node snapshots / output / credentials into session
+manifests. Host AppKit wiring for ssh-tmux parity (real Bonsplit + Ghostty
+panels, `remote.herdr.*`, `RemoteHerdrController`) lives in cmux `Sources/`
+and executes the package verbs (`HostApply` / `SessionApply` / `Lifecycle` /
+`PaneRoute` / `LiveApply`).
 
-## Restore semantics (PR 6)
+## Scope
 
 Persist **attachment intent**, never live topology:
 
