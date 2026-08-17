@@ -49,7 +49,7 @@ extension TerminalController {
                 hostStableSurfaceID: hostSurfaceID,
                 hostWorkspaceID: workspaceFilter
             )
-            guard let payload = NestedTopologyControlSocketPayload.foundationObject(for: result) else {
+            guard let payload = NestedTopologyControlSocketPayload().foundationObject(for: result) else {
                 throw NestedTopologySocketError.encodeFailed
             }
             return payload
@@ -92,7 +92,7 @@ extension TerminalController {
             )
         }
 
-        guard let nodeID = NestedTopologyControlSocketPayload.decodeNodeID(from: params["node_id"]) else {
+        guard let nodeID = NestedTopologyControlSocketPayload().decodeNodeID(from: params["node_id"]) else {
             return v2Error(
                 id: id,
                 code: "invalid_params",
@@ -163,7 +163,7 @@ extension TerminalController {
             }
             do {
                 let result = try await controller.focusNode(focusRequest)
-                guard let payload = NestedTopologyControlSocketPayload.foundationObject(for: result) else {
+                guard let payload = NestedTopologyControlSocketPayload().foundationObject(for: result) else {
                     return .err(
                         code: "encode_failed",
                         message: NestedTopologySocketError.encodeFailed.description,
@@ -184,8 +184,11 @@ extension TerminalController {
             } catch {
                 return .err(
                     code: "provider_error",
-                    message: String(describing: error),
-                    data: nil
+                    message: String(
+                        localized: "socket.nestedTopology.focusFailed",
+                        defaultValue: "Nested focus failed"
+                    ),
+                    data: ["error_class": "provider_error"]
                 )
             }
         }
@@ -193,7 +196,7 @@ extension TerminalController {
 
     /// Whether `system.tree` requested nested descendants.
     nonisolated static func nestedTopologyIncludeNestedRequested(_ params: [String: Any]) -> Bool {
-        NestedTopologyControlSocketPayload.includeNestedRequested(params)
+        NestedTopologyControlSocketPayload().includeNestedRequested(params)
     }
 
     private nonisolated static func nestedTopologyUUID(_ value: Any?) -> UUID? {
