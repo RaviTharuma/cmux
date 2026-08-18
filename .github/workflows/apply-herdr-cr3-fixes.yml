@@ -1,0 +1,41 @@
+name: apply-herdr-cr3-fixes
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/apply-herdr-cr3-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/nested-topology-herdr-v1-becf
+          fetch-depth: 0
+
+      - name: Cherry-pick CodeRabbit review3 fixes
+        env:
+          BUNDLE_URL: https://raw.githubusercontent.com/RaviTharuma/cmux-herdr/cursor/pr10045-coderabbit-replies-f1c1/docs/upstream/patches/herdr-cr3-fixes.bundle
+        run: |
+          set -euo pipefail
+          git config user.name "Ravi Tharuma"
+          git config user.email "25951435+RaviTharuma@users.noreply.github.com"
+          curl -fsSL "$BUNDLE_URL" -o /tmp/herdr-cr3.bundle
+          git bundle verify /tmp/herdr-cr3.bundle
+          git fetch /tmp/herdr-cr3.bundle HEAD:refs/heads/herdr-cr3-tip
+          MB=$(git merge-base HEAD herdr-cr3-tip)
+          mapfile -t COMMITS < <(git rev-list --reverse "${MB}..herdr-cr3-tip")
+          echo "merge-base=$MB commits=${COMMITS[*]}"
+          if [ "${#COMMITS[@]}" -gt 0 ]; then
+            git cherry-pick "${COMMITS[@]}"
+          fi
+          if [ -f .github/workflows/apply-herdr-cr3-fixes.yml ]; then
+            git rm -f .github/workflows/apply-herdr-cr3-fixes.yml
+            git commit -m "chore: remove one-shot apply-herdr-cr3-fixes workflow" || true
+          fi
+          git push origin HEAD:cursor/nested-topology-herdr-v1-becf
+          echo "Pushed $(git rev-parse HEAD)"
