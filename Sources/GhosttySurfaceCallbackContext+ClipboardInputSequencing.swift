@@ -129,7 +129,6 @@ extension GhosttySurfaceCallbackContext {
             )
             return
         }
-        guard completeRuntimeClipboardRequest(requestID) else { return }
 
         // Remote tmux mirror panes need tmux to bracket the paste because the
         // local manual-I/O surface cannot know the remote pane's mode.
@@ -139,6 +138,8 @@ extension GhosttySurfaceCallbackContext {
                 text: text
             ) ?? false
         )
+        // Keep the clipboard request registered until the async Herdr paste
+        // settles, so teardown can still invalidate a live native request.
         if !handledByMirror,
            !text.isEmpty,
            AppDelegate.shared?.remoteHerdrController.isMirrorPaneSurface(surfaceId) == true {
@@ -147,6 +148,7 @@ extension GhosttySurfaceCallbackContext {
                     surfaceId: surfaceId,
                     text: text
                 ) ?? false
+                guard self.completeRuntimeClipboardRequest(requestID) else { return }
                 self.deliverRuntimeClipboardReadCompletion(
                     text: text,
                     consumed: handledByHerdr,
@@ -158,6 +160,7 @@ extension GhosttySurfaceCallbackContext {
             }
             return
         }
+        guard completeRuntimeClipboardRequest(requestID) else { return }
         deliverRuntimeClipboardReadCompletion(
             text: text,
             consumed: handledByMirror,

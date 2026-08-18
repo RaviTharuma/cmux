@@ -46,7 +46,7 @@ extension RemoteHerdrWindowMirrorHost {
     }
 
     func seedActivePaneIfNeeded() {
-        let live = renderedLayout?.paneIDsInOrder ?? Array(panelsByPaneId.keys)
+        let live = renderedLayout?.paneIDsInOrder ?? panelsByPaneId.keys.sorted()
         if let activePaneID, live.contains(activePaneID) {
             projectActivePane(activePaneID)
         } else if let seed = live.first {

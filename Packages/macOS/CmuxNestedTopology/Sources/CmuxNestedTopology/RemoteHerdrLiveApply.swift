@@ -80,6 +80,8 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
         self.title = title
     }
 
+    deinit {}
+
     /// Create the Ghostty surface *before* the Bonsplit rebuild.
     @discardableResult
     public func makePanel(paneID: String) -> RemoteHerdrGhosttySurface {
@@ -249,6 +251,12 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
             surface.resizeGrid(cols: grid.cols, rows: grid.rows)
             surfaces[key] = surface
         }
+        // Flush seeds that were waiting for this client grid.
+        for key in surfaces.keys {
+            if let flushed = seed.noteReady(paneID: key, cols: grid.cols, rows: grid.rows) {
+                _ = routeOutput(paneID: key, data: Array(flushed))
+            }
+        }
         return (grid.cols, grid.rows)
     }
 
@@ -384,6 +392,8 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
         self.enabled = enabled
         self.socketPath = socketPath
     }
+
+    deinit {}
 
     /// Create/close tabs, then apply each window mirror.
     @discardableResult

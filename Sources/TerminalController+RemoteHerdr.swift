@@ -55,6 +55,59 @@ extension TerminalController {
         return (socket, session)
     }
 
+    private nonisolated static func remoteHerdrInvalidSessionResponse(id: Any?) -> String {
+        v2Error(
+            id: id,
+            code: "invalid_params",
+            message: String(
+                localized: "socket.remoteHerdr.sessionInvalid",
+                defaultValue: "session is invalid"
+            )
+        )
+    }
+
+    /// Like ``v2VmCall`` but never returns raw `String(describing:)` diagnostics.
+    private nonisolated func remoteHerdrVmCall(
+        id: Any?,
+        timeoutSeconds: TimeInterval,
+        _ work: @escaping () async throws -> [String: Any]
+    ) -> String {
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Result<[String: Any], Error>?
+        let task = Task {
+            do {
+                result = .success(try await work())
+            } catch {
+                result = .failure(error)
+            }
+            semaphore.signal()
+        }
+        if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
+            task.cancel()
+            return v2Error(
+                id: id,
+                code: "timeout",
+                message: "VM request timed out after \(Int(timeoutSeconds)) seconds"
+            )
+        }
+        switch result {
+        case .success(let payload):
+            return v2Ok(id: id, result: payload)
+        case .failure(let error):
+            return v2Error(
+                id: id,
+                code: RemoteHerdrHostError.publicCode(for: error),
+                message: RemoteHerdrHostError.publicMessage(for: error)
+            )
+        case nil:
+            return v2Error(
+                id: id,
+                code: "mirror_failed",
+                message: "remote Herdr operation failed"
+            )
+        }
+    }
+
     /// `remote.herdr.sessions` — list Herdr workspaces on a Unix socket.
     nonisolated func v2RemoteHerdrSessions(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
@@ -63,7 +116,7 @@ extension TerminalController {
         guard let socket = Self.remoteHerdrSocketPath(from: params) else {
             return Self.remoteHerdrSocketRequiredResponse(id: id)
         }
-        return v2VmCall(id: id, timeoutSeconds: 30) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 30) {
             guard let controller = await MainActor.run(body: { AppDelegate.shared?.remoteHerdrController })
             else {
                 throw RemoteHerdrHostError.unreachable("app not ready")
@@ -102,9 +155,18 @@ extension TerminalController {
             return Self.remoteHerdrSocketRequiredResponse(id: id)
         }
         let activate = (params["activate"] as? Bool) ?? false
-        let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
+        let session: String?
+        if params.keys.contains("session") {
+            guard let validated = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
+            else {
+                return Self.remoteHerdrInvalidSessionResponse(id: id)
+            }
+            session = validated
+        } else {
+            session = nil
+        }
         let target = RemoteHerdrAttachWindowTarget.fromParams(params, dedicated: dedicated)
-        return v2VmCall(id: id, timeoutSeconds: 60) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 60) {
             guard let controller = await MainActor.run(body: { AppDelegate.shared?.remoteHerdrController })
             else {
                 throw RemoteHerdrHostError.unreachable("app not ready")
@@ -151,7 +213,7 @@ extension TerminalController {
         guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
             return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
-        return v2VmCall(id: id, timeoutSeconds: 10) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 10) {
             await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.detach(
                     socketPath: resolved.socket,
@@ -175,7 +237,7 @@ extension TerminalController {
         guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
             return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
-        return v2VmCall(id: id, timeoutSeconds: 10) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 10) {
             await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.statePayload(
                     socketPath: resolved.socket,
@@ -198,7 +260,7 @@ extension TerminalController {
         guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
             return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
-        return v2VmCall(id: id, timeoutSeconds: 10) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 10) {
             let panes = await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.paneSurfaceEntries(
                     socketPath: resolved.socket,
@@ -222,7 +284,7 @@ extension TerminalController {
         guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
             return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
-        return v2VmCall(id: id, timeoutSeconds: 10) {
+        return remoteHerdrVmCall(id: id, timeoutSeconds: 10) {
             let windows = await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.paneGrids(
                     socketPath: resolved.socket,

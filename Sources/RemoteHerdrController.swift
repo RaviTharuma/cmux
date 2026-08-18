@@ -274,8 +274,8 @@ enum RemoteHerdrHostError: Error, LocalizedError {
             return "remote Herdr mirror beta is disabled"
         case .invalidParams:
             return "invalid remote Herdr params"
-        case .unreachable(let detail):
-            return "remote Herdr unreachable: \(detail)"
+        case .unreachable:
+            return "remote Herdr unreachable"
         case .noSessions:
             return "no Herdr sessions on socket"
         case .mirrorFailed:
@@ -285,5 +285,31 @@ enum RemoteHerdrHostError: Error, LocalizedError {
         case .windowCreationFailed:
             return "could not create window for Herdr mirror"
         }
+    }
+
+    /// Stable socket JSON code for this error (never includes paths / provider payloads).
+    var publicCode: String {
+        switch self {
+        case .disabled: return "disabled"
+        case .invalidParams: return "invalid_params"
+        case .unreachable: return "unreachable"
+        case .noSessions: return "no_sessions"
+        case .mirrorFailed: return "mirror_failed"
+        case .alreadyAttaching: return "already_attaching"
+        case .windowCreationFailed: return "window_creation_failed"
+        }
+    }
+
+    /// Map any thrown error to a bounded public code for control-socket clients.
+    static func publicCode(for error: Error) -> String {
+        (error as? RemoteHerdrHostError)?.publicCode ?? "mirror_failed"
+    }
+
+    /// Map any thrown error to a bounded public message (no raw diagnostics).
+    static func publicMessage(for error: Error) -> String {
+        if let herdr = error as? RemoteHerdrHostError {
+            return herdr.errorDescription ?? "remote Herdr operation failed"
+        }
+        return "remote Herdr operation failed"
     }
 }

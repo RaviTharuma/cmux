@@ -126,7 +126,8 @@ extension RemoteHerdrController {
                 Self.logger.warning("remote-herdr: mirror session failed session=\(sessionID, privacy: .public)")
                 sessionFailures.append([
                     "session_id": sessionID,
-                    "error": String(describing: error),
+                    "error_code": RemoteHerdrHostError.publicCode(for: error),
+                    "error": RemoteHerdrHostError.publicMessage(for: error),
                 ])
             }
         }
@@ -225,6 +226,7 @@ extension RemoteHerdrController {
             try register(host, key: key)
             return workspace.id
         } catch {
+            host.detach(reason: "register_failed")
             tabManager.closeWorkspace(workspace, recordHistory: false)
             throw error
         }

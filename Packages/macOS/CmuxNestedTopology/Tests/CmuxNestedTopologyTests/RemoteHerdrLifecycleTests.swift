@@ -174,7 +174,14 @@ import Testing
     }
 
     @Test func everyHostCloseDetaches() {
-        for source in ["last_workspace_tab", "window_quit", "app_terminate", "explicit_detach", "host_tab"] {
+        for source in [
+            "last_workspace_tab",
+            "window_quit",
+            "app_terminate",
+            "explicit_detach",
+            "host_tab",
+            "host_panel",
+        ] {
             #expect(RemoteHerdrLifecycle.hostClosePolicy(source) == "detach")
         }
         #expect(RemoteHerdrLifecycle.hostClosePolicy("unknown") == "noop")

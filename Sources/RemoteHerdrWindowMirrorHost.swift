@@ -163,7 +163,8 @@ final class RemoteHerdrWindowMirrorHost {
         case "rebuild_tree":
             rebuildBonsplitTree()
         case "keep_tree":
-            imposeDividerTree(plan.dividerTree)
+            // Divider impose runs once below for keep_tree / rebuild / expand / remove.
+            break
         case "expand_leaf":
             if let paneID = action.paneID,
                let from = action.splitFromPaneID,

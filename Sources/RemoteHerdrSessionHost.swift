@@ -542,7 +542,9 @@ final class RemoteHerdrSessionHost {
     private func startOutputPollLoop() {
         outputPollTask?.cancel()
         outputPollTask = Task { [weak self] in
-            // Herdr exposes no %output stream; poll pane.read is intentional.
+            // Herdr exposes no %output / streaming read event. Until the provider
+            // grows one, this bounded poll (150ms busy / 500ms idle, 200 lines per
+            // pane) is the delivery path. Cost scales with live pane count.
             var idlePolls = 0
             while !Task.isCancelled {
                 guard let self, !self.isTornDown else { break }

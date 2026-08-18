@@ -2791,7 +2791,7 @@ class TerminalController {
             "workspace.remote.terminal_session_launching",
             "workspace.remote.terminal_session_connected", "workspace.remote.terminal_session_end",
             "remote.tmux.sessions", "remote.tmux.attach", "remote.tmux.detach", "remote.tmux.state", "remote.tmux.mirror", "remote.tmux.window", "remote.tmux.pane_grids", "remote.tmux.pane_surfaces",
-            "remote.herdr.sessions", "remote.herdr.attach", "remote.herdr.mirror", "remote.herdr.window", "remote.herdr.detach", "remote.herdr.state", "remote.herdr.pane_surfaces", "remote.herdr.pane_grids",
+            // remote.herdr.* appended below only when the beta flag is on
             "nested.topology.list",
             "nested.node.focus",
             "session.restore_previous",
@@ -2954,6 +2954,18 @@ class TerminalController {
                 "mobile.task.models.list",
             ]
             methods.removeAll { taskComposerMethods.contains($0) }
+        }
+        if RemoteHerdrController.isEnabled {
+            methods.append(contentsOf: [
+                "remote.herdr.sessions",
+                "remote.herdr.attach",
+                "remote.herdr.mirror",
+                "remote.herdr.window",
+                "remote.herdr.detach",
+                "remote.herdr.state",
+                "remote.herdr.pane_surfaces",
+                "remote.herdr.pane_grids",
+            ])
         }
         methods.append(contentsOf: ControlCommandExecutionPolicy.simulatorMethods)
 #if DEBUG

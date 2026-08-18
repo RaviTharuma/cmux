@@ -3568,6 +3568,8 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
     }
 
     weak var terminalSurface: TerminalSurface?
+    /// Owned async Herdr pane-split work started from the sync split menu path.
+    private var remoteHerdrSplitTask: Task<Void, Never>?
     /// View-scoped ingress keeps title churn independent across terminal surfaces.
     fileprivate let titleUpdateIngress = GhosttyTitleUpdateIngress()
     /// Retained independently because the weak surface can clear before view teardown.
@@ -7448,12 +7450,15 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         }
         if let herdr = AppDelegate.shared?.remoteHerdrController,
            herdr.isMirrorPaneSurface(surfaceId) {
-            // Fire-and-forget async split; UI expects Bool — schedule and report accepted.
-            Task { @MainActor in
+            // Sync UI expects Bool; own the async RPC (cancel prior in-flight split).
+            remoteHerdrSplitTask?.cancel()
+            remoteHerdrSplitTask = Task { @MainActor [weak self] in
                 _ = await herdr.handleMirrorSplitRequested(
                     surfaceId: surfaceId,
                     vertical: !direction.isHorizontal
                 )
+                if Task.isCancelled { return }
+                self?.remoteHerdrSplitTask = nil
             }
             return true
         }
