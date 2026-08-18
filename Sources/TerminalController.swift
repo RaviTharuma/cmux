@@ -40,6 +40,17 @@ private struct SocketLineProcessingResult: Sendable {
     let response: String?
     let passwordAuthorization: SocketPasswordAuthorization
 }
+
+private let remoteHerdrPendingSocketReplyKey = "cmux.remoteHerdr.pendingSocketReply"
+
+private final class RemoteHerdrPendingSocketReply: NSObject, @unchecked Sendable {
+    let socket: Int32
+    let command: String
+    init(socket: Int32, command: String) {
+        self.socket = socket
+        self.command = command
+    }
+}
 // Agent notification gating types (AgentNotifyCategory / AgentTurnCompleteMode /
 // AgentNotificationMeta / agentNotificationShouldDeliver) live in AgentNotificationGate.swift.
 
@@ -1037,6 +1048,20 @@ class TerminalController {
         return transport.writeAll(Data(payload.utf8), to: socket)
     }
 
+    static let remoteHerdrDeferredReplyToken = "\u{1e}cmux.remote-herdr.deferred"
+
+    nonisolated static func currentRemoteHerdrPendingSocketReply() -> (socket: Int32, command: String)? {
+        guard let pending = Thread.current.threadDictionary[remoteHerdrPendingSocketReplyKey] as? RemoteHerdrPendingSocketReply else {
+            return nil
+        }
+        return (pending.socket, pending.command)
+    }
+
+    nonisolated func completeRemoteHerdrSocketReply(_ response: String, socket: Int32, command: String) {
+        _ = writeSocketResponse(response, to: socket)
+        publishSocketEvents(command: command, response: response)
+    }
+
     /// Interim bridged view of a decoded `ControlRequest` with Foundation
     /// (`Any`) field shapes, so the existing command bodies keep their
     /// `[String: Any]` params until they migrate onto the typed DTOs in the
@@ -1742,7 +1767,8 @@ class TerminalController {
 
                 let result = processSocketLine(
                     trimmed,
-                    passwordAuthorization: passwordAuthorization
+                    passwordAuthorization: passwordAuthorization,
+                    socket: socket
                 )
                 passwordAuthorization = result.passwordAuthorization
                 if let response = result.response {
@@ -1762,8 +1788,18 @@ class TerminalController {
 
     private nonisolated func processSocketLine(
         _ command: String,
-        passwordAuthorization: SocketPasswordAuthorization
+        passwordAuthorization: SocketPasswordAuthorization,
+        socket: Int32? = nil
     ) -> SocketLineProcessingResult {
+        if let socket {
+            Thread.current.threadDictionary[remoteHerdrPendingSocketReplyKey] = RemoteHerdrPendingSocketReply(
+                socket: socket,
+                command: command
+            )
+        } else {
+            Thread.current.threadDictionary.removeObject(forKey: remoteHerdrPendingSocketReplyKey)
+        }
+        defer { Thread.current.threadDictionary.removeObject(forKey: remoteHerdrPendingSocketReplyKey) }
 #if DEBUG
         let debugInfo = Self.socketCommandDebugInfo(command)
         let debugStart = DispatchTime.now().uptimeNanoseconds
@@ -1795,6 +1831,12 @@ class TerminalController {
         }
 
         let response = processCommandUsingSocketExecutionPolicy(command)
+        if response == TerminalController.remoteHerdrDeferredReplyToken {
+            return SocketLineProcessingResult(
+                response: nil,
+                passwordAuthorization: nextPasswordAuthorization
+            )
+        }
 #if DEBUG
         if let response {
             Self.debugLogSocketCommandEndIfNeeded(

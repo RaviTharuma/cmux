@@ -101,13 +101,13 @@ final class RemoteHerdrController {
             sessionID: session
         )
         guard let host = sessionHosts.removeValue(forKey: key) else { return }
+        let workspaceId = host.mirroredWorkspaceId
         host.detach(reason: "explicit_detach")
         releaseHandoffIfNeeded(host: host)
-        if let workspaceId = host.mirroredWorkspaceId,
-           let manager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId) {
-            if let workspace = manager.tabs.first(where: { $0.id == workspaceId }) {
-                manager.closeWorkspace(workspace, recordHistory: false)
-            }
+        if let workspaceId,
+           let manager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId),
+           let workspace = manager.tabs.first(where: { $0.id == workspaceId }) {
+            manager.closeWorkspace(workspace, recordHistory: false)
         }
     }
 

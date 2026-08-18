@@ -66,30 +66,12 @@ extension TerminalController {
         )
     }
 
-    /// Like ``v2VmCall`` but never returns raw `String(describing:)` diagnostics.
-    private nonisolated func remoteHerdrVmCall(
+    /// Encodes one remote.herdr result without raw `String(describing:)` diagnostics.
+    private nonisolated func remoteHerdrEncodeResult(
         id: Any?,
         timeoutSeconds: TimeInterval,
-        _ work: @escaping () async throws -> [String: Any]
+        _ result: Result<[String: Any], Error>?
     ) -> String {
-        let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: Result<[String: Any], Error>?
-        let task = Task {
-            do {
-                result = .success(try await work())
-            } catch {
-                result = .failure(error)
-            }
-            semaphore.signal()
-        }
-        if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
-            task.cancel()
-            return v2Error(
-                id: id,
-                code: "timeout",
-                message: "VM request timed out after \(Int(timeoutSeconds)) seconds"
-            )
-        }
         switch result {
         case .success(let payload):
             return v2Ok(id: id, result: payload)
@@ -102,10 +84,63 @@ extension TerminalController {
         case nil:
             return v2Error(
                 id: id,
-                code: "mirror_failed",
-                message: "remote Herdr operation failed"
+                code: "timeout",
+                message: "VM request timed out after \(Int(timeoutSeconds)) seconds"
             )
         }
+    }
+
+    /// Socket-worker path returns immediately and writes later. In-process
+    /// ``handleSocketLine`` still waits so callers receive a string.
+    private nonisolated func remoteHerdrVmCall(
+        id: Any?,
+        timeoutSeconds: TimeInterval,
+        _ work: @escaping @Sendable () async throws -> [String: Any]
+    ) -> String {
+        if let pending = TerminalController.currentRemoteHerdrPendingSocketReply() {
+            Task { [weak self] in
+                guard let self else { return }
+                let encoded: String
+                do {
+                    let payload = try await withThrowingTaskGroup(of: [String: Any].self) { group in
+                        group.addTask { try await work() }
+                        group.addTask {
+                            try await Task.sleep(for: .seconds(timeoutSeconds))
+                            throw CancellationError()
+                        }
+                        let first = try await group.next()!
+                        group.cancelAll()
+                        return first
+                    }
+                    encoded = self.remoteHerdrEncodeResult(id: id, timeoutSeconds: timeoutSeconds, .success(payload))
+                } catch is CancellationError {
+                    encoded = self.remoteHerdrEncodeResult(id: id, timeoutSeconds: timeoutSeconds, nil)
+                } catch {
+                    encoded = self.remoteHerdrEncodeResult(id: id, timeoutSeconds: timeoutSeconds, .failure(error))
+                }
+                self.completeRemoteHerdrSocketReply(
+                    encoded,
+                    socket: pending.socket,
+                    command: pending.command
+                )
+            }
+            return TerminalController.remoteHerdrDeferredReplyToken
+        }
+        let semaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Result<[String: Any], Error>?
+        let task = Task {
+            do {
+                result = .success(try await work())
+            } catch {
+                result = .failure(error)
+            }
+            semaphore.signal()
+        }
+        if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
+            task.cancel()
+            return remoteHerdrEncodeResult(id: id, timeoutSeconds: timeoutSeconds, nil)
+        }
+        return remoteHerdrEncodeResult(id: id, timeoutSeconds: timeoutSeconds, result)
     }
 
     /// `remote.herdr.sessions` — list Herdr workspaces on a Unix socket.

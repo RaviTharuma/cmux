@@ -149,6 +149,19 @@ import Testing
         #expect(result["window_id"] as? String != "w1")
     }
 
+    @Test func restoreRejectedPlanDoesNotApplyWindows() {
+        let host = RemoteHerdrLiveHost()
+        let result = host.restore(
+            sessions: [RemoteHerdrDiscoveredSession(sessionID: "sess-1", name: "main")],
+            windows: [window(tabID: "should-not-apply")],
+            activeWindowID: "win-dead",
+            liveWindows: []
+        )
+        #expect(result["ok"] as? Bool == false)
+        #expect(host.windows["should-not-apply"] == nil)
+        #expect(host.windows.isEmpty)
+    }
+
     @Test func duplicateTabIDsLastTitleWinsWithoutTrapping() {
         let host = RemoteHerdrLiveHost()
         let result = host.applySession([

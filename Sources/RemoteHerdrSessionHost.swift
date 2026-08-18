@@ -199,9 +199,9 @@ final class RemoteHerdrSessionHost {
             }
             return true
         }
-        let filteredPanes = snapshot.panes.filter { pane in
-            filteredTabs.contains { $0.id == pane.tabID }
-        }
+        let filteredTabIDs = Set(filteredTabs.map(\.id))
+        let filteredPanes = snapshot.panes.filter { filteredTabIDs.contains($0.tabID) }
+        let filteredPaneIDs = Set(filteredPanes.map(\.id))
         let filteredSnapshot = NestedTopologySnapshot(
             encodingVersion: snapshot.encodingVersion,
             attachmentID: snapshot.attachmentID,
@@ -210,9 +210,7 @@ final class RemoteHerdrSessionHost {
             workspaces: snapshot.workspaces.filter { $0.id.rawID == sessionID },
             tabs: filteredTabs,
             panes: filteredPanes,
-            agents: snapshot.agents.filter { agent in
-                filteredPanes.contains { $0.id == agent.paneID }
-            },
+            agents: snapshot.agents.filter { filteredPaneIDs.contains($0.paneID) },
             focus: snapshot.focus
         )
         let windows = RemoteHerdrSessionMirror.windows(

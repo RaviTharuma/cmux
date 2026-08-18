@@ -112,6 +112,7 @@ extension RemoteHerdrController {
             ? filtered.map(\.sessionID)
             : plan.sessionsToMirror
         for sessionID in sessionsToCreate {
+            try Task.checkCancellation()
             let session = filtered.first { $0.sessionID == sessionID }
             do {
                 if let workspaceId = try await mirrorSession(
@@ -122,6 +123,8 @@ extension RemoteHerdrController {
                 ) {
                     workspaceIds.append(workspaceId)
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 Self.logger.warning("remote-herdr: mirror session failed session=\(sessionID, privacy: .public)")
                 sessionFailures.append([
@@ -131,6 +134,7 @@ extension RemoteHerdrController {
                 ])
             }
         }
+        try Task.checkCancellation()
         for sessionID in plan.sessionsToReuse {
             if let host = sessionHosts[Self.connectionKey(endpointHash: endpointHash, sessionID: sessionID)],
                let workspaceId = host.mirroredWorkspaceId {
@@ -140,6 +144,7 @@ extension RemoteHerdrController {
                 }
             }
         }
+        try Task.checkCancellation()
 
         guard !workspaceIds.isEmpty else {
             if plan.discardWindowOnFail {

@@ -546,6 +546,16 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             liveWindows: liveWindows,
             activeWindowID: activeWindowID
         )
+        let accepted = plan.outcome == "mirrored" || plan.outcome == "reused"
+        guard accepted else {
+            return [
+                "ok": false,
+                "outcome": plan.outcome,
+                "window_id": plan.windowID as Any,
+                "reason": plan.reason as Any,
+                "mode": "reattach",
+            ]
+        }
         let applied = applySession(windows)
         for window in self.windows.values {
             for (paneID, surface) in window.surfaces {
