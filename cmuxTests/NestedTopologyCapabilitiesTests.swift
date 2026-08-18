@@ -70,7 +70,7 @@ import Testing
         #expect(!capabilities.contains("nested_topology.focus.v1"))
     }
 
-    @Test func nestedTopologyListReturnsDisabledWhenBetaOff() throws {
+    @Test func nestedTopologyListReturnsDisabledWhenBetaOff() async throws {
         let defaults = UserDefaults.standard
         let key = "nestedTopology.beta.enabled"
         let previous = defaults.object(forKey: key)
@@ -84,7 +84,7 @@ import Testing
         }
 
         let request = #"{"jsonrpc":"2.0","id":1,"method":"nested.topology.list","params":{}}"#
-        let responseText = TerminalController.shared.handleSocketLine(request)
+        let responseText = await handleSocketLineOffMain(request)
         let responseData = try #require(responseText.data(using: .utf8))
         let response = try #require(JSONSerialization.jsonObject(with: responseData) as? [String: Any])
         #expect(response["ok"] as? Bool == false)
@@ -92,7 +92,7 @@ import Testing
         #expect(error["code"] as? String == "disabled")
     }
 
-    @Test func nestedNodeFocusReturnsDisabledWhenBetaOff() throws {
+    @Test func nestedNodeFocusReturnsDisabledWhenBetaOff() async throws {
         let defaults = UserDefaults.standard
         let key = "nestedTopology.beta.enabled"
         let previous = defaults.object(forKey: key)
@@ -108,7 +108,7 @@ import Testing
         let request = """
         {"jsonrpc":"2.0","id":1,"method":"nested.node.focus","params":{"host_surface_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","node_id":{"version":1,"provider_kind":"herdr","provider_instance_id":"x","node_kind":"pane","raw_id":"w1:p1"}}}
         """
-        let responseText = TerminalController.shared.handleSocketLine(request)
+        let responseText = await handleSocketLineOffMain(request)
         let responseData = try #require(responseText.data(using: .utf8))
         let response = try #require(JSONSerialization.jsonObject(with: responseData) as? [String: Any])
         #expect(response["ok"] as? Bool == false)
@@ -116,7 +116,7 @@ import Testing
         #expect(error["code"] as? String == "disabled")
     }
 
-    @Test func nestedNodeFocusRejectsMissingNodeID() throws {
+    @Test func nestedNodeFocusRejectsMissingNodeID() async throws {
         let defaults = UserDefaults.standard
         let key = "nestedTopology.beta.enabled"
         let previous = defaults.object(forKey: key)
@@ -130,7 +130,7 @@ import Testing
         }
 
         let request = #"{"jsonrpc":"2.0","id":1,"method":"nested.node.focus","params":{"host_surface_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}}"#
-        let responseText = TerminalController.shared.handleSocketLine(request)
+        let responseText = await handleSocketLineOffMain(request)
         let responseData = try #require(responseText.data(using: .utf8))
         let response = try #require(JSONSerialization.jsonObject(with: responseData) as? [String: Any])
         #expect(response["ok"] as? Bool == false)
@@ -146,6 +146,17 @@ import Testing
         // Default tree must remain compatible: no nested payload unless requested.
         if let result = response["result"] as? [String: Any] {
             #expect(result["nested"] == nil)
+        }
+    }
+
+    private static let socketWorker = DispatchQueue(label: "cmux.nested-topology.socket-worker")
+
+    private func handleSocketLineOffMain(_ line: String) async -> String {
+        let controller = TerminalController.shared
+        return await withCheckedContinuation { continuation in
+            Self.socketWorker.async {
+                continuation.resume(returning: controller.handleSocketLine(line))
+            }
         }
     }
 }
