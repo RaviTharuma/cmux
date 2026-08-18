@@ -129,7 +129,7 @@ import Testing
     @Test func zoomMustNotCloseHiddenPanel() {
         let host = RemoteHerdrLiveHost()
         _ = host.applySession([window()])
-        _ = host.applySession([window(zoomed: true, active: "p1")])
+        _ = host.applySession([window(active: "p1", zoomed: true)])
         #expect(host.windows["w2:t1"]?.surfaces["p2"]?.live == true)
     }
 

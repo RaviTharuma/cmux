@@ -171652,6 +171652,57 @@
         }
       }
     },
+    "settings.betaFeatures.remoteHerdrMirror": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Herdr Mirror"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "リモート Herdr ミラー"
+          }
+        }
+      }
+    },
+    "settings.betaFeatures.remoteHerdrMirror.subtitleOff": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hides native Herdr mirroring until you enable it here (or Nested Topology)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ここで有効にする（またはネストトポロジーを有効にする）まで、ネイティブ Herdr ミラーリングを非表示にします。"
+          }
+        }
+      }
+    },
+    "settings.betaFeatures.remoteHerdrMirror.subtitleOn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mirrors a Herdr Unix socket into cmux tabs and Bonsplit panes (native ssh-tmux parity). Closing cmux detaches without stopping the Herdr server."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herdr の Unix ソケットを cmux のタブと Bonsplit ペインにミラーリングします（ネイティブ ssh-tmux 互換）。cmux を閉じても Herdr サーバーは停止しません。"
+          }
+        }
+      }
+    },
     "settings.betaFeatures.warning": {
       "extractionState": "manual",
       "localizations": {

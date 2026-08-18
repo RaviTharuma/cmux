@@ -10,7 +10,7 @@ import OSLog
 /// detaches without ``server.stop``.
 @MainActor
 final class RemoteHerdrController {
-    nonisolated static let logger = Logger(subsystem: "com.cmuxterm.app", category: "RemoteHerdr")
+    private nonisolated static let logger = Logger(subsystem: "com.cmuxterm.app", category: "RemoteHerdr")
 
     /// Live session hosts keyed `endpointHash\u{1}session`.
     private(set) var sessionHosts: [String: RemoteHerdrSessionHost] = [:]
@@ -123,19 +123,19 @@ final class RemoteHerdrController {
 
     /// Workspace closed from chrome — detach without killing Herdr.
     func handleWorkspaceClosed(workspaceId: UUID) {
-        guard let entry = sessionHosts.first(where: { $0.value.mirroredWorkspaceId == workspaceId })
-        else { return }
-        sessionHosts.removeValue(forKey: entry.key)
-        entry.value.detach(reason: "host_tab")
-        releaseHandoffIfNeeded(host: entry.value)
+        detachSessionHostForWorkspace(workspaceId, reason: "host_tab")
     }
 
     /// Detach when the workspace stays open as a local tab.
     func detachMirrorWorkspaceKeptOpenLocally(workspaceId: UUID) {
+        detachSessionHostForWorkspace(workspaceId, reason: "host_tab")
+    }
+
+    private func detachSessionHostForWorkspace(_ workspaceId: UUID, reason: String) {
         guard let entry = sessionHosts.first(where: { $0.value.mirroredWorkspaceId == workspaceId })
         else { return }
         sessionHosts.removeValue(forKey: entry.key)
-        entry.value.detach(reason: "host_tab")
+        entry.value.detach(reason: reason)
         releaseHandoffIfNeeded(host: entry.value)
     }
 
@@ -147,7 +147,7 @@ final class RemoteHerdrController {
     /// Paste single-line text into the Herdr pane behind `surfaceId`.
     @discardableResult
     func pasteIntoMirror(surfaceId: UUID, text: String) async -> Bool {
-        for host in sessionHosts.values {
+        for host in sessionHosts.values where host.containsSurface(surfaceId) {
             if await host.pasteIntoMirror(surfaceId: surfaceId, text: text) {
                 return true
             }
@@ -182,9 +182,9 @@ final class RemoteHerdrController {
         attachRegistry.isAttaching(endpointHash)
     }
 
-    func register(_ host: RemoteHerdrSessionHost, key: String) {
+    func register(_ host: RemoteHerdrSessionHost, key: String) throws {
+        try acquireHandoff(host: host)
         sessionHosts[key] = host
-        acquireHandoff(host: host)
     }
 
     func purgeDeadHosts(endpointHash: String) {
@@ -229,16 +229,12 @@ final class RemoteHerdrController {
 
     // MARK: - Plugin writer handoff
 
-    private func acquireHandoff(host: RemoteHerdrSessionHost) {
-        do {
-            try handoff.acquire(
-                hostStableSurfaceID: host.hostStableSurfaceID,
-                attachmentID: host.attachmentID
-            )
-            host.nativeLive = true
-        } catch {
-            Self.logger.warning("remote-herdr: failed to acquire plugin writer handoff")
-        }
+    private func acquireHandoff(host: RemoteHerdrSessionHost) throws {
+        try handoff.acquire(
+            hostStableSurfaceID: host.hostStableSurfaceID,
+            attachmentID: host.attachmentID
+        )
+        host.nativeLive = true
     }
 
     private func releaseHandoffIfNeeded(host: RemoteHerdrSessionHost) {
@@ -260,6 +256,9 @@ final class RemoteHerdrController {
 }
 
 /// Host-side errors for the native Herdr mirror path.
+///
+/// ``errorDescription`` strings are intentionally literal (not localized) so
+/// socket JSON error payloads stay stable for automation clients.
 enum RemoteHerdrHostError: Error, LocalizedError {
     case disabled
     case invalidParams

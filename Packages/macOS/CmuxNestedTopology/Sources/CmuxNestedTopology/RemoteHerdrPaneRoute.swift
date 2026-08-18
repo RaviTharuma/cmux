@@ -157,11 +157,24 @@ public struct RemoteHerdrPaneRoute: Sendable {
     public var activePaneID: String?
     /// In-flight user focus awaiting provider echo.
     public var pendingUserFocus: String?
-    /// Apply log for tests.
+    /// Apply log for tests. Bounded in production to avoid unbounded growth.
     public var log: [String] = []
+    /// When false, ``log`` appends are no-ops (production session hosts).
+    public var loggingEnabled = true
+    private static let maxLogEntries = 256
 
     /// Creates an empty router.
-    public init() {}
+    public init(loggingEnabled: Bool = true) {
+        self.loggingEnabled = loggingEnabled
+    }
+
+    private mutating func appendLog(_ entry: String) {
+        guard loggingEnabled else { return }
+        log.append(entry)
+        if log.count > Self.maxLogEntries {
+            log.removeFirst(log.count - Self.maxLogEntries)
+        }
+    }
 
     /// Records a host surface for `paneID` (tmux ``panelsByPaneId``).
     public mutating func bind(paneID: String, surfaceID: String) {
@@ -173,19 +186,21 @@ public struct RemoteHerdrPaneRoute: Sendable {
         if titleFilters[paneID] == nil {
             titleFilters[paneID] = RemoteHerdrTitleEscapeFilter()
         }
-        log.append("bind:\(paneID):\(surfaceID)")
+        appendLog("bind:\(paneID):\(surfaceID)")
     }
 
     /// Drops the surface binding when the BASE pane is gone.
     public mutating func unbind(paneID: String) {
-        surfaces.removeValue(forKey: paneID)
+        if let surfaceID = surfaces.removeValue(forKey: paneID) {
+            buffers.removeValue(forKey: surfaceID)
+        }
         lastSnapshot.removeValue(forKey: paneID)
         titleFilters.removeValue(forKey: paneID)
         cwdByPane.removeValue(forKey: paneID)
         livePaneIDs.remove(paneID)
         if activePaneID == paneID { activePaneID = nil }
         if pendingUserFocus == paneID { pendingUserFocus = nil }
-        log.append("unbind:\(paneID)")
+        appendLog("unbind:\(paneID)")
     }
 
     /// Replaces the BASE pane set.
@@ -205,7 +220,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
         var buffer = buffers[surfaceID] ?? Data()
         buffer.append(cleaned)
         buffers[surfaceID] = buffer
-        log.append("out:\(paneID):\(cleaned.count)")
+        appendLog("out:\(paneID):\(cleaned.count)")
         return RemoteHerdrSurfaceWrite(
             paneID: paneID, surfaceID: surfaceID, data: cleaned, fullRedraw: false
         )
@@ -232,7 +247,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
             buffer.append(cleaned)
             buffers[surfaceID] = buffer
         }
-        log.append("out-text:\(paneID):redraw=\(delta.fullRedraw ? 1 : 0):\(cleaned.count)")
+        appendLog("out-text:\(paneID):redraw=\(delta.fullRedraw ? 1 : 0):\(cleaned.count)")
         return RemoteHerdrSurfaceWrite(
             paneID: paneID, surfaceID: surfaceID, data: cleaned, fullRedraw: delta.fullRedraw
         )
@@ -241,7 +256,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
     /// Forwards typed bytes to the bound pane only.
     public mutating func routeInput(paneID: String, data: Data) -> RemoteHerdrInputSend? {
         guard !data.isEmpty, surfaces[paneID] != nil else { return nil }
-        log.append("in:\(paneID):\(data.count)")
+        appendLog("in:\(paneID):\(data.count)")
         return RemoteHerdrInputSend(paneID: paneID, data: data)
     }
 
@@ -258,7 +273,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
         if pendingUserFocus == paneID {
             pendingUserFocus = nil
         }
-        log.append("focus-provider:\(paneID)")
+        appendLog("focus-provider:\(paneID)")
         return RemoteHerdrFocusProjection(
             paneID: paneID, sendToProvider: false, changed: changed, source: "provider"
         )
@@ -267,7 +282,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
     /// User click. Requires a live BASE pane. Sends unless already pending.
     public mutating func userFocus(paneID: String) -> RemoteHerdrFocusProjection {
         if !livePaneIDs.contains(paneID), surfaces[paneID] == nil {
-            log.append("focus-user-unknown:\(paneID)")
+            appendLog("focus-user-unknown:\(paneID)")
             return RemoteHerdrFocusProjection(
                 paneID: nil, sendToProvider: false, changed: false, source: "user"
             )
@@ -275,13 +290,13 @@ public struct RemoteHerdrPaneRoute: Sendable {
         let changed = activePaneID != paneID
         activePaneID = paneID
         if pendingUserFocus == paneID {
-            log.append("focus-user-pending:\(paneID)")
+            appendLog("focus-user-pending:\(paneID)")
             return RemoteHerdrFocusProjection(
                 paneID: paneID, sendToProvider: false, changed: changed, source: "user"
             )
         }
         pendingUserFocus = paneID
-        log.append("focus-user-send:\(paneID)")
+        appendLog("focus-user-send:\(paneID)")
         return RemoteHerdrFocusProjection(
             paneID: paneID, sendToProvider: true, changed: changed, source: "user"
         )
@@ -301,7 +316,7 @@ public struct RemoteHerdrPaneRoute: Sendable {
         if trimmed.isEmpty { return nil }
         cwdByPane[paneID] = trimmed
         let apply = activePaneID == paneID
-        log.append("cwd:\(paneID):tab=\(apply ? 1 : 0)")
+        appendLog("cwd:\(paneID):tab=\(apply ? 1 : 0)")
         return RemoteHerdrCwdUpdate(paneID: paneID, tabID: tabID, path: trimmed, applyToTab: apply)
     }
 

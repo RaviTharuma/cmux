@@ -34,6 +34,7 @@ final class RemoteHerdrWindowMirrorHost {
     @ObservationIgnored var isVisibleForSizing = false
     @ObservationIgnored var isTornDown = false
     @ObservationIgnored var isApplyingRemoteLayout = false
+    @ObservationIgnored private var applyingRemoteLayoutDepth = 0
     @ObservationIgnored var isApplyingFocus = false
 
     @ObservationIgnored var panelsByPaneId: [String: TerminalPanel] = [:]
@@ -62,6 +63,7 @@ final class RemoteHerdrWindowMirrorHost {
     @ObservationIgnored var sizingPassScheduled = false
     @ObservationIgnored var lastClaimedClientGrid: (cols: Int, rows: Int)?
     @ObservationIgnored var dividerResizeSentSinceDragBegan = false
+    @ObservationIgnored var pendingDividerDragEnd = false
     @ObservationIgnored private let sizing = RemoteHerdrSizing()
 
     var surfaceIDsInLayoutOrder: [UUID] {
@@ -123,17 +125,7 @@ final class RemoteHerdrWindowMirrorHost {
         ) else {
             // Still create panels when the layout cannot produce a divider tree.
             for paneID in result.createdPaneIDs where panelsByPaneId[paneID] == nil {
-                guard let panel = makePanel(paneID) else { continue }
-                panelsByPaneId[paneID] = panel
-                onTerminalPanelAdded?(panel)
-                if var state = mirrorState {
-                    RemoteHerdrWindowMirror.bindSurface(
-                        paneID: paneID,
-                        surfaceID: panel.id,
-                        state: &state
-                    )
-                    mirrorState = state
-                }
+                createPanelIfNeeded(paneID: paneID)
             }
             if let focus = result.focusPaneID {
                 noteRemoteActivePane(focus)
@@ -141,8 +133,8 @@ final class RemoteHerdrWindowMirrorHost {
             return
         }
         let actions = RemoteHerdrHostApply.actions(result: result, plan: plan)
-        isApplyingRemoteLayout = true
-        defer { isApplyingRemoteLayout = false }
+        beginApplyingRemoteLayout()
+        defer { endApplyingRemoteLayout() }
         for action in actions {
             applyHostAction(action, plan: plan)
         }
@@ -157,18 +149,8 @@ final class RemoteHerdrWindowMirrorHost {
     ) {
         switch action.op {
         case "create_panel":
-            if let paneID = action.paneID, panelsByPaneId[paneID] == nil {
-                guard let panel = makePanel(paneID) else { return }
-                panelsByPaneId[paneID] = panel
-                onTerminalPanelAdded?(panel)
-                if var state = mirrorState {
-                    RemoteHerdrWindowMirror.bindSurface(
-                        paneID: paneID,
-                        surfaceID: panel.id,
-                        state: &state
-                    )
-                    mirrorState = state
-                }
+            if let paneID = action.paneID {
+                createPanelIfNeeded(paneID: paneID)
             }
         case "close_panel":
             if let paneID = action.paneID, let panel = panelsByPaneId.removeValue(forKey: paneID) {
@@ -251,6 +233,23 @@ final class RemoteHerdrWindowMirrorHost {
         setActivePane(paneID, fromProvider: false)
     }
 
+    @discardableResult
+    func createPanelIfNeeded(paneID: String) -> TerminalPanel? {
+        guard panelsByPaneId[paneID] == nil else { return panelsByPaneId[paneID] }
+        guard let panel = makePanel(paneID) else { return nil }
+        panelsByPaneId[paneID] = panel
+        onTerminalPanelAdded?(panel)
+        if var state = mirrorState {
+            RemoteHerdrWindowMirror.bindSurface(
+                paneID: paneID,
+                surfaceID: panel.id,
+                state: &state
+            )
+            mirrorState = state
+        }
+        return panel
+    }
+
     func teardown() {
         isTornDown = true
         isVisibleForSizing = false
@@ -276,20 +275,18 @@ final class RemoteHerdrWindowMirrorHost {
         var panes: [[String: Any]] = []
         for paneID in panelsByPaneId.keys.sorted() {
             guard let panel = panelsByPaneId[paneID] else { continue }
-            var assignedCols = 80
-            var assignedRows = 24
-            if let leaf = layout?.firstLeaf(withPaneID: paneID) {
-                assignedCols = max(1, leaf.width)
-                assignedRows = max(1, leaf.height)
-            }
+            let leaf = layout?.firstLeaf(withPaneID: paneID)
+            let assignedCols = leaf.map { max(1, $0.width) } ?? 80
+            let assignedRows = leaf.map { max(1, $0.height) } ?? 24
+            let hasLeaf = leaf != nil
             panes.append([
                 "pane_id": paneID,
                 "assigned_cols": assignedCols,
                 "assigned_rows": assignedRows,
                 "rendered_cols": assignedCols,
                 "rendered_rows": assignedRows,
-                "exact_cols": true,
-                "exact_rows": true,
+                "exact_cols": hasLeaf,
+                "exact_rows": hasLeaf,
                 "has_panel": true,
             ])
         }

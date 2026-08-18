@@ -46,6 +46,9 @@ public struct RemoteHerdrGhosttySurface: Hashable, Sendable {
 
 /// One live window mirror (tmux ``RemoteTmuxWindowMirror.apply``).
 ///
+/// Isolation: main-actor / single-owner only. `@unchecked Sendable` documents
+/// that callers must not share this instance across concurrent executors.
+///
 /// Runs makePanel *before* rebuild, isolated output, named keys, impose,
 /// divider drag, first-responder rules, feed-forward size, seed, cwd.
 public final class RemoteHerdrLiveWindow: @unchecked Sendable {
@@ -338,14 +341,18 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
                 assignedCols = max(1, leaf.width)
                 assignedRows = max(1, leaf.height)
             }
+            let exactCols = layout?.firstLeaf(withPaneID: paneID) != nil
+                && surface.cols == assignedCols
+            let exactRows = layout?.firstLeaf(withPaneID: paneID) != nil
+                && surface.rows == assignedRows
             panes.append([
                 "pane_id": paneID,
                 "assigned_cols": assignedCols,
                 "assigned_rows": assignedRows,
                 "rendered_cols": surface.cols,
                 "rendered_rows": surface.rows,
-                "exact_cols": true,
-                "exact_rows": true,
+                "exact_cols": exactCols,
+                "exact_rows": exactRows,
                 "has_panel": surface.live,
             ])
         }
@@ -360,6 +367,8 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
 }
 
 /// Session-level live machine (tmux ``RemoteTmuxSessionMirror`` + controller).
+///
+/// Isolation: main-actor / single-owner only (same as ``RemoteHerdrLiveWindow``).
 public final class RemoteHerdrLiveHost: @unchecked Sendable {
     public var enabled: Bool
     public var socketPath: String
@@ -387,7 +396,11 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             windows: windows,
             previousTabIDs: previousTabIDs
         )
-        let titles = Dictionary(uniqueKeysWithValues: windows.map { ($0.tabID, $0.title) })
+        var titles: [String: String] = [:]
+        for window in windows {
+            // Last write wins on duplicate tabIDs — never trap on provider data.
+            titles[window.tabID] = window.title
+        }
         let actions = RemoteHerdrSessionApply.actions(
             session,
             titles: titles,
@@ -426,7 +439,9 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     @discardableResult
     public func attach(
         sessions: [RemoteHerdrDiscoveredSession],
-        activate: Bool = true
+        activate: Bool = true,
+        activeWindowID: String = "w1",
+        liveWindows: [String] = ["w1"]
     ) -> [String: Any] {
         guard enabled else { return ["ok": false, "outcome": "disabled"] }
         let plan = RemoteHerdrAttachPlanner.plan(
@@ -435,8 +450,8 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             appReady: true,
             alreadyAttaching: false,
             existingMirrorWindowID: nil,
-            activeWindowID: "w1",
-            liveWindows: ["w1"],
+            activeWindowID: activeWindowID,
+            liveWindows: liveWindows,
             sessions: sessions,
             activate: activate
         )
@@ -503,7 +518,9 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     @discardableResult
     public func restore(
         sessions: [RemoteHerdrDiscoveredSession],
-        windows: [RemoteHerdrWindow]
+        windows: [RemoteHerdrWindow],
+        activeWindowID: String = "w1",
+        liveWindows: [String] = ["w1"]
     ) -> [String: Any] {
         let record = RemoteHerdrRestoreRecord(
             endpointHash: RemoteHerdrLifecycle.endpointHash(socketPath),
@@ -516,8 +533,8 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             enabled: enabled,
             appReady: true,
             sessions: sessions,
-            liveWindows: ["w1"],
-            activeWindowID: "w1"
+            liveWindows: liveWindows,
+            activeWindowID: activeWindowID
         )
         let applied = applySession(windows)
         for window in self.windows.values {

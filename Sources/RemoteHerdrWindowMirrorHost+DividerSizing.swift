@@ -63,6 +63,7 @@ extension RemoteHerdrWindowMirrorHost {
                 position,
                 parentSize: parentSize,
                 firstChild: children[0],
+                siblings: Array(children.dropFirst()),
                 isHorizontal: isHorizontal
             )
         } else if lastDividerPositions[splitID] == nil {
@@ -72,6 +73,7 @@ extension RemoteHerdrWindowMirrorHost {
                     position,
                     parentSize: parentSize,
                     firstChild: children[0],
+                    siblings: Array(children.dropFirst()),
                     isHorizontal: isHorizontal
                 )
             }
@@ -132,21 +134,20 @@ extension RemoteHerdrWindowMirrorHost {
         _ position: CGFloat,
         parentSize: CGSize,
         firstChild: RemoteHerdrLayoutNode,
+        siblings: [RemoteHerdrLayoutNode],
         isHorizontal: Bool
     ) -> Bool {
         let parentExtent = isHorizontal ? parentSize.width : parentSize.height
-        let totalCells = isHorizontal ? firstChild.width + siblingSpan(after: firstChild, horizontal: true)
-            : firstChild.height + siblingSpan(after: firstChild, horizontal: false)
-        // Use the first child's current assigned span as the sibling total
-        // baseline from the rendered layout root axis.
-        let axisTotal = isHorizontal
-            ? (renderedLayout?.width ?? totalCells)
-            : (renderedLayout?.height ?? totalCells)
+        let firstSpan = isHorizontal ? firstChild.width : firstChild.height
+        let siblingSpan = siblings.reduce(0) { partial, sibling in
+            partial + (isHorizontal ? sibling.width : sibling.height)
+        }
+        let axisTotal = max(2, firstSpan + siblingSpan)
         let draggedExtent = Double(parentExtent * position)
         let cells = sizing.resizeCells(
             draggedExtent: draggedExtent,
             axisSpan: Double(parentExtent),
-            totalCells: max(2, axisTotal)
+            totalCells: axisTotal
         )
         guard let leafID = firstChild.paneIDsInOrder.first else { return false }
         let leaf = firstChild.firstLeaf(withPaneID: leafID) ?? firstChild
@@ -164,10 +165,5 @@ extension RemoteHerdrWindowMirrorHost {
         onResizePaneRequest?(leafID, cols, rows)
         dividerResizeSentSinceDragBegan = true
         return true
-    }
-
-    private func siblingSpan(after first: RemoteHerdrLayoutNode, horizontal: Bool) -> Int {
-        // Best-effort; the axis total from renderedLayout is preferred above.
-        horizontal ? max(1, first.width) : max(1, first.height)
     }
 }

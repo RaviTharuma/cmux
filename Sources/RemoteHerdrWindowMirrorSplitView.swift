@@ -94,7 +94,7 @@ struct RemoteHerdrWindowMirrorSplitView: View {
 
     private func becameVisible() {
         pushClientSize(pointSize: containerSize)
-        mirror.setNeedsSizingPassIgnoringInputs()
+        mirror.setNeedsSizingPass()
         mirror.seedActivePaneIfNeeded()
     }
 }

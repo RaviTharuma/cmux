@@ -8,7 +8,7 @@ import CryptoKit
 /// always detaches. Restore reattaches; it never replays a stale tree.
 public enum RemoteHerdrLifecycle {
     /// Catalog key twin of tmux ``betaFeatures.remoteTmux``.
-    public static let settingKey = "betaFeatures.remoteHerdrMirror"
+    public static let settingKey = "remoteHerdrMirror.beta.enabled"
 
     /// Control-socket methods twin of ``remote.tmux.*``.
     public static let socketMethods: [String] = [
@@ -78,8 +78,14 @@ public enum RemoteHerdrLifecycle {
     }
 
     /// Reuse a live connection; replace a dead one; otherwise start.
+    ///
+    /// - Parameter started: When `exists` is false, a prior failed start
+    ///   (`started == false`) still maps to `"start"` so callers can retry.
+    ///   When `exists` is true, `started` is ignored because live process
+    ///   state (`exited`) is authoritative.
     public static func connectionAction(started: Bool, exited: Bool, exists: Bool) -> String {
         guard exists else { return "start" }
+        _ = started
         if exited { return "replace" }
         return "reuse"
     }
@@ -162,20 +168,20 @@ public struct RemoteHerdrAttachWindowTarget: Hashable, Sendable {
             return RemoteHerdrAttachWindowTarget(kind: "dedicated_new_window")
         }
         if params.keys.contains("window_id") {
-            guard let raw = params["window_id"] else {
-                return RemoteHerdrAttachWindowTarget(kind: "unresolved_explicit")
-            }
-            let text = String(describing: raw)
-            if text.isEmpty || text == "nil" {
+            guard let text = params["window_id"] as? String, !text.isEmpty else {
                 return RemoteHerdrAttachWindowTarget(kind: "unresolved_explicit")
             }
             return RemoteHerdrAttachWindowTarget(kind: "explicit", windowID: text)
         }
-        if let preferred = params["preferred_window_id"] {
+        if let preferred = params["preferred_window_id"] as? String, !preferred.isEmpty {
             return RemoteHerdrAttachWindowTarget(
                 kind: "contextual",
-                windowID: String(describing: preferred)
+                windowID: preferred
             )
+        }
+        if params.keys.contains("preferred_window_id") {
+            // Non-string preferred ids fail closed rather than coercing.
+            return RemoteHerdrAttachWindowTarget(kind: "contextual")
         }
         return RemoteHerdrAttachWindowTarget(kind: "contextual")
     }
@@ -444,7 +450,7 @@ public enum RemoteHerdrAttachPlanner {
             sessionsToReuse: reuse,
             purgeSessionIDs: dead,
             moveWorkspaceIDs: createWindow ? moveIDs : [],
-            postAttach: post ?? (create.isEmpty ? post : RemoteHerdrLifecycle.postApplyClientSize),
+            postAttach: post,
             discardWindowOnFail: createWindow,
             activate: activate
         )

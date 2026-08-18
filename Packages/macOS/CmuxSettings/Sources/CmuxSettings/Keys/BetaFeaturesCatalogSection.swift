@@ -96,9 +96,9 @@ public struct BetaFeaturesCatalogSection: SettingCatalogSection {
     /// TerminalPanels. Defaults off; while off, every `remote.herdr.*` entry
     /// point is gated (unless nested topology is enabled as a shared beta).
     public let remoteHerdrMirror = DefaultsKey<Bool>(
-        id: "betaFeatures.remoteHerdrMirror",
+        id: "remoteHerdrMirror.beta.enabled",
         defaultValue: false,
-        userDefaultsKey: "betaFeatures.remoteHerdrMirror"
+        userDefaultsKey: "remoteHerdrMirror.beta.enabled"
     )
 
     public init() {}

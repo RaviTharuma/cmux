@@ -45,7 +45,7 @@ panels, `remote.herdr.*`, `RemoteHerdrController`) lives in cmux `Sources/`
 and executes the package verbs (`HostApply` / `SessionApply` / `Lifecycle` /
 `PaneRoute` / `LiveApply`).
 
-## Scope
+## Persistence and restore
 
 Persist **attachment intent**, never live topology:
 

@@ -37,12 +37,14 @@ import Testing
         #expect(RemoteHerdrLifecycle.validateSocketPath("tmp/herdr.sock") == nil)
         #expect(RemoteHerdrLifecycle.validateSocketPath("-oProxyCommand=x") == nil)
         #expect(RemoteHerdrLifecycle.validateSessionName("  main  ") == "main")
-        #expect(RemoteHerdrLifecycle.endpointHash(socket) == RemoteHerdrLifecycle.endpointHash(socket))
-        #expect(RemoteHerdrLifecycle.endpointHash(socket).count == 16)
+        let digest = RemoteHerdrLifecycle.endpointHash(socket)
+        #expect(digest.count == 16)
+        #expect(digest.allSatisfy({ $0.isHexDigit }))
+        #expect(RemoteHerdrLifecycle.endpointHash("/tmp/other.sock") != digest)
     }
 
     @Test func betaFlag() {
-        #expect(RemoteHerdrLifecycle.settingKey == "betaFeatures.remoteHerdrMirror")
+        #expect(RemoteHerdrLifecycle.settingKey == "remoteHerdrMirror.beta.enabled")
         #expect(RemoteHerdrLifecycle.decodeBeta(nil) == false)
         #expect(RemoteHerdrLifecycle.decodeBeta("on") == true)
         #expect(RemoteHerdrLifecycle.decodeBeta("off") == false)

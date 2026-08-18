@@ -5728,7 +5728,17 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
                     )
             }
         } else {
-            remoteHerdrWindowMirrors.removeValue(forKey: panelId)
+            if let existing = remoteHerdrWindowMirrors.removeValue(forKey: panelId) {
+                existing.onTerminalPanelAdded = nil
+                existing.onTerminalPanelRemoved = nil
+                for panel in existing.panelsByPaneId.values {
+                    terminalFontSizeChangeCoordinator?
+                        .terminalDidLeaveWorkspace(
+                            panel,
+                            workspace: self
+                        )
+                }
+            }
         }
     }
 

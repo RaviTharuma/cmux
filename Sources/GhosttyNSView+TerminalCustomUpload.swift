@@ -10,15 +10,18 @@ extension GhosttyNSView {
             ) ?? false
         }
         if handledByMirror { return }
-        let handledByHerdr = MainActor.assumeIsolated {
+        let isHerdrMirrorPane = MainActor.assumeIsolated {
             AppDelegate.shared?.remoteHerdrController.isMirrorPaneSurface(surface.id) == true
         }
-        if handledByHerdr {
+        if isHerdrMirrorPane {
             Task { @MainActor in
-                _ = await AppDelegate.shared?.remoteHerdrController.pasteIntoMirror(
+                let handledByHerdr = await AppDelegate.shared?.remoteHerdrController.pasteIntoMirror(
                     surfaceId: surface.id,
                     text: text
-                )
+                ) ?? false
+                if !handledByHerdr {
+                    surface.sendText(text)
+                }
             }
             return
         }

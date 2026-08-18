@@ -107,6 +107,7 @@ extension RemoteHerdrController {
         }
 
         var workspaceIds: [UUID] = []
+        var sessionFailures: [[String: Any]] = []
         let sessionsToCreate = plan.sessionsToMirror.isEmpty
             ? filtered.map(\.sessionID)
             : plan.sessionsToMirror
@@ -122,7 +123,11 @@ extension RemoteHerdrController {
                     workspaceIds.append(workspaceId)
                 }
             } catch {
-                Self.logger.warning("remote-herdr: mirror session failed")
+                Self.logger.warning("remote-herdr: mirror session failed session=\(sessionID, privacy: .public)")
+                sessionFailures.append([
+                    "session_id": sessionID,
+                    "error": String(describing: error),
+                ])
             }
         }
         for sessionID in plan.sessionsToReuse {
@@ -164,6 +169,7 @@ extension RemoteHerdrController {
             "mirrored": true,
             "window_id": resolvedWindowId.uuidString,
             "workspace_ids": workspaceIds.map(\.uuidString),
+            "session_failures": sessionFailures,
             "post_attach": plan.postAttach as Any,
             "server_stopped": false,
         ]
@@ -214,9 +220,14 @@ extension RemoteHerdrController {
             tabManager: tabManager,
             workspace: workspace
         )
-        register(host, key: key)
-        try await host.applyInitialSnapshot(snapshot, layouts: layouts)
-        return workspace.id
+        do {
+            try await host.applyInitialSnapshot(snapshot, layouts: layouts)
+            try register(host, key: key)
+            return workspace.id
+        } catch {
+            tabManager.closeWorkspace(workspace, recordHistory: false)
+            throw error
+        }
     }
 
     private func liveWindowIDs(_ appDelegate: AppDelegate) -> [String] {

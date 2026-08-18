@@ -17,8 +17,8 @@ extension RemoteHerdrWindowMirrorHost {
     }
 
     func rebuildBonsplitTree() {
-        isApplyingRemoteLayout = true
-        defer { isApplyingRemoteLayout = false }
+        beginApplyingRemoteLayout()
+        defer { endApplyingRemoteLayout() }
         resetToSingleEmptyPane()
         tabIdByPaneId.removeAll()
         paneIdByPaneId.removeAll()
@@ -153,11 +153,7 @@ extension RemoteHerdrWindowMirrorHost {
         }
         let targetPane = insertFirst ? existingPane : newPane
         // Ensure panel exists before building the leaf tab.
-        if panelsByPaneId[newPaneID] == nil, let panel = makePanel(newPaneID) {
-            panelsByPaneId[newPaneID] = panel
-            onTerminalPanelAdded?(panel)
-        }
-        guard panelsByPaneId[newPaneID] != nil else { return }
+        if createPanelIfNeeded(paneID: newPaneID) == nil { return }
         guard let tabId = bonsplitController.createTab(
             title: title(forPane: newPaneID),
             icon: "terminal",
@@ -175,7 +171,8 @@ extension RemoteHerdrWindowMirrorHost {
             rebuildBonsplitTree()
             return
         }
-        if let tabId = tabIdByPaneId[paneID] {
+        let tabId = tabIdByPaneId[paneID]
+        if let tabId {
             _ = bonsplitController.closeTab(tabId, inPane: pane)
         }
         if bonsplitController.allPaneIds.count > 1 {
@@ -184,8 +181,23 @@ extension RemoteHerdrWindowMirrorHost {
         tabIdByPaneId.removeValue(forKey: paneID)
         paneIdByPaneId.removeValue(forKey: paneID)
         paneIdByBonsplitPane.removeValue(forKey: pane)
-        if let tabId = tabIdByPaneId[paneID] {
+        if let tabId {
             paneIdByTabId.removeValue(forKey: tabId)
+        }
+    }
+
+    func beginApplyingRemoteLayout() {
+        applyingRemoteLayoutDepth += 1
+        isApplyingRemoteLayout = true
+    }
+
+    func endApplyingRemoteLayout() {
+        applyingRemoteLayoutDepth = max(0, applyingRemoteLayoutDepth - 1)
+        guard applyingRemoteLayoutDepth == 0 else { return }
+        isApplyingRemoteLayout = false
+        if pendingDividerDragEnd {
+            pendingDividerDragEnd = false
+            sendDividerDragEnd(bonsplitController)
         }
     }
 
@@ -282,10 +294,8 @@ extension RemoteHerdrWindowMirrorHost: BonsplitDelegate {
     func splitTabBarDividerDragDidEnd(_ controller: BonsplitController) {
         defer { TerminalWindowPortalRegistry.endInteractiveGeometryResize(owner: controller) }
         guard !isApplyingRemoteLayout else {
+            pendingDividerDragEnd = true
             setNeedsSizingPass()
-            DispatchQueue.main.async { [weak self] in
-                self?.flushDeferredDividerDragEnd()
-            }
             return
         }
         sendDividerDragEnd(controller)
@@ -300,25 +310,10 @@ extension RemoteHerdrWindowMirrorHost: BonsplitDelegate {
         seedMissingDividerBaselines(from: split.second)
     }
 
-    private func flushDeferredDividerDragEnd() {
-        guard !isTornDown else { return }
-        guard !isApplyingRemoteLayout else {
-            DispatchQueue.main.async { [weak self] in
-                self?.flushDeferredDividerDragEnd()
-            }
-            return
-        }
-        sendDividerDragEnd(bonsplitController)
-    }
-
     private func sendDividerDragEnd(_ controller: BonsplitController) {
-        let sent = syncChangedDividerPositions(sendWithoutBaseline: true)
+        _ = syncChangedDividerPositions(sendWithoutBaseline: true)
             || dividerResizeSentSinceDragBegan
         dividerResizeSentSinceDragBegan = false
-        if sent {
-            setNeedsSizingPass()
-        } else {
-            setNeedsSizingPassIgnoringInputs()
-        }
+        setNeedsSizingPass()
     }
 }

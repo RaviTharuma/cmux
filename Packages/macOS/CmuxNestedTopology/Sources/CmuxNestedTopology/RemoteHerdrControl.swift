@@ -117,7 +117,7 @@ public enum RemoteHerdrControl {
     ) -> RemoteHerdrTabActivity {
         let busy = statuses.compactMap { paneID, status -> String? in
             busyStatuses.contains(status.lowercased()) ? paneID : nil
-        }
+        }.sorted()
         let command = busy.compactMap { agents[$0] }.first
         return RemoteHerdrTabActivity(
             hasActiveCommand: !busy.isEmpty,
@@ -264,6 +264,11 @@ public struct RemoteHerdrProviderInput: Hashable, Sendable {
 }
 
 /// Bounded Ghostty→Herdr input queue.
+///
+/// Isolation: callers must touch this type only from the main actor (host
+/// Ghostty / session-host paths). `@unchecked Sendable` documents that
+/// invariant so the type can cross async boundaries without introducing
+/// a package-level `@MainActor` dependency.
 public final class RemoteHerdrInputForwarder: @unchecked Sendable {
     public var maximumPendingBytes: Int
     public var pendingBytes = 0
@@ -303,6 +308,8 @@ public final class RemoteHerdrInputForwarder: @unchecked Sendable {
 }
 
 /// Optimistic user focus with rollback.
+///
+/// Isolation: main-actor only (same as ``RemoteHerdrInputForwarder``).
 public final class RemoteHerdrFocusController: @unchecked Sendable {
     public var livePaneIDs: [String] = []
     public var activePaneID: String?
@@ -372,6 +379,8 @@ public struct RemoteHerdrFocusCommand: Hashable, Sendable {
 }
 
 /// Hold ``pane.read`` seed bytes until the surface grid is ready.
+///
+/// Isolation: main-actor only (same as ``RemoteHerdrInputForwarder``).
 public final class RemoteHerdrPaneSeedQueue: @unchecked Sendable {
     public var maximumBytes: Int
     public var pending: [String: Data] = [:]
@@ -393,6 +402,8 @@ public final class RemoteHerdrPaneSeedQueue: @unchecked Sendable {
         if data.count > maximumBytes {
             deferredFull.insert(paneID)
             pending.removeValue(forKey: paneID)
+            kinds.removeValue(forKey: paneID)
+            targets.removeValue(forKey: paneID)
             return "overflow"
         }
         pending[paneID] = data

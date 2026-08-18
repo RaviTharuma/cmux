@@ -7,29 +7,61 @@ import CmuxNestedTopology
 /// Twin of ``TerminalController+RemoteTmux``. Gates on ``RemoteHerdrController/isEnabled``
 /// and never shells out to the herdr CLI.
 extension TerminalController {
+    private nonisolated static func remoteHerdrDisabledResponse(id: Any?) -> String {
+        v2Error(
+            id: id,
+            code: "disabled",
+            message: String(
+                localized: "socket.remoteHerdr.disabled",
+                defaultValue: "remote Herdr mirror beta is disabled"
+            )
+        )
+    }
+
+    private nonisolated static func remoteHerdrSocketPath(from params: [String: Any]) -> String? {
+        RemoteHerdrLifecycle.validateSocketPath(
+            (params["socket"] as? String) ?? (params["socket_path"] as? String)
+        )
+    }
+
+    private nonisolated static func remoteHerdrSocketRequiredResponse(id: Any?) -> String {
+        v2Error(
+            id: id,
+            code: "invalid_params",
+            message: String(
+                localized: "socket.remoteHerdr.socketRequired",
+                defaultValue: "socket is required"
+            )
+        )
+    }
+
+    private nonisolated static func remoteHerdrSocketAndSessionRequiredResponse(id: Any?) -> String {
+        v2Error(
+            id: id,
+            code: "invalid_params",
+            message: String(
+                localized: "socket.remoteHerdr.socketAndSessionRequired",
+                defaultValue: "socket and session are required"
+            )
+        )
+    }
+
+    private nonisolated static func remoteHerdrSocketAndSession(
+        from params: [String: Any]
+    ) -> (socket: String, session: String)? {
+        guard let socket = remoteHerdrSocketPath(from: params),
+              let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
+        else { return nil }
+        return (socket, session)
+    }
+
     /// `remote.herdr.sessions` — list Herdr workspaces on a Unix socket.
     nonisolated func v2RemoteHerdrSessions(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ) else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketRequired",
-                    defaultValue: "socket is required"
-                )
-            )
+        guard let socket = Self.remoteHerdrSocketPath(from: params) else {
+            return Self.remoteHerdrSocketRequiredResponse(id: id)
         }
         return v2VmCall(id: id, timeoutSeconds: 30) {
             guard let controller = await MainActor.run(body: { AppDelegate.shared?.remoteHerdrController })
@@ -64,26 +96,10 @@ extension TerminalController {
         dedicated: Bool
     ) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ) else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketRequired",
-                    defaultValue: "socket is required"
-                )
-            )
+        guard let socket = Self.remoteHerdrSocketPath(from: params) else {
+            return Self.remoteHerdrSocketRequiredResponse(id: id)
         }
         let activate = (params["activate"] as? Bool) ?? false
         let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
@@ -130,39 +146,21 @@ extension TerminalController {
     /// `remote.herdr.detach` — detach and remove mirror workspace; leave Herdr running.
     nonisolated func v2RemoteHerdrDetach(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ),
-              let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
-        else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketAndSessionRequired",
-                    defaultValue: "socket and session are required"
-                )
-            )
+        guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
+            return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
         return v2VmCall(id: id, timeoutSeconds: 10) {
             await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.detach(
-                    socketPath: socket,
-                    sessionID: session
+                    socketPath: resolved.socket,
+                    sessionID: resolved.session
                 )
             }
             return [
-                "socket": socket,
-                "session": session,
+                "socket": resolved.socket,
+                "session": resolved.session,
                 "detached": true,
                 "server_stopped": false,
             ]
@@ -172,37 +170,19 @@ extension TerminalController {
     /// `remote.herdr.state` — mirrored session diagnostics.
     nonisolated func v2RemoteHerdrState(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ),
-              let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
-        else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketAndSessionRequired",
-                    defaultValue: "socket and session are required"
-                )
-            )
+        guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
+            return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
         return v2VmCall(id: id, timeoutSeconds: 10) {
             await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.statePayload(
-                    socketPath: socket,
-                    sessionID: session
+                    socketPath: resolved.socket,
+                    sessionID: resolved.session
                 ) ?? [
-                    "socket": socket,
-                    "session": session,
+                    "socket": resolved.socket,
+                    "session": resolved.session,
                     "attached": false,
                     "mirrored": false,
                 ]
@@ -213,39 +193,21 @@ extension TerminalController {
     /// `remote.herdr.pane_surfaces` — pane id → surface id map.
     nonisolated func v2RemoteHerdrPaneSurfaces(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ),
-              let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
-        else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketAndSessionRequired",
-                    defaultValue: "socket and session are required"
-                )
-            )
+        guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
+            return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
         return v2VmCall(id: id, timeoutSeconds: 10) {
             let panes = await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.paneSurfaceEntries(
-                    socketPath: socket,
-                    sessionID: session
+                    socketPath: resolved.socket,
+                    sessionID: resolved.session
                 ) ?? []
             }
             return [
-                "socket": socket,
-                "session": session,
+                "socket": resolved.socket,
+                "session": resolved.session,
                 "mirrored": !panes.isEmpty,
                 "panes": panes,
             ]
@@ -255,39 +217,21 @@ extension TerminalController {
     /// `remote.herdr.pane_grids` — assigned vs rendered grids per pane.
     nonisolated func v2RemoteHerdrPaneGrids(id: Any?, params: [String: Any]) -> String {
         guard RemoteHerdrController.isEnabled else {
-            return v2Error(
-                id: id,
-                code: "disabled",
-                message: String(
-                    localized: "socket.remoteHerdr.disabled",
-                    defaultValue: "remote Herdr mirror beta is disabled"
-                )
-            )
+            return Self.remoteHerdrDisabledResponse(id: id)
         }
-        guard let socket = RemoteHerdrLifecycle.validateSocketPath(
-            (params["socket"] as? String) ?? (params["socket_path"] as? String)
-        ),
-              let session = RemoteHerdrLifecycle.validateSessionName(params["session"] as? String)
-        else {
-            return v2Error(
-                id: id,
-                code: "invalid_params",
-                message: String(
-                    localized: "socket.remoteHerdr.socketAndSessionRequired",
-                    defaultValue: "socket and session are required"
-                )
-            )
+        guard let resolved = Self.remoteHerdrSocketAndSession(from: params) else {
+            return Self.remoteHerdrSocketAndSessionRequiredResponse(id: id)
         }
         return v2VmCall(id: id, timeoutSeconds: 10) {
             let windows = await MainActor.run {
                 AppDelegate.shared?.remoteHerdrController.paneGrids(
-                    socketPath: socket,
-                    sessionID: session
+                    socketPath: resolved.socket,
+                    sessionID: resolved.session
                 ) ?? []
             }
             return [
-                "socket": socket,
-                "session": session,
+                "socket": resolved.socket,
+                "session": resolved.session,
                 "mirrored": !windows.isEmpty,
                 "windows": windows,
             ]

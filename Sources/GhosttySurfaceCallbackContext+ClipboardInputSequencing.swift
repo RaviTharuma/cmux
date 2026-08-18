@@ -139,21 +139,45 @@ extension GhosttySurfaceCallbackContext {
                 text: text
             ) ?? false
         )
-        let handledByHerdr: Bool
         if !handledByMirror,
            !text.isEmpty,
            AppDelegate.shared?.remoteHerdrController.isMirrorPaneSurface(surfaceId) == true {
             Task { @MainActor in
-                _ = await AppDelegate.shared?.remoteHerdrController.pasteIntoMirror(
+                let handledByHerdr = await AppDelegate.shared?.remoteHerdrController.pasteIntoMirror(
                     surfaceId: surfaceId,
                     text: text
+                ) ?? false
+                self.deliverRuntimeClipboardReadCompletion(
+                    text: text,
+                    consumed: handledByHerdr,
+                    requestID: requestID,
+                    stateAddress: stateAddress,
+                    surface: surface,
+                    terminalSurface: terminalSurface
                 )
             }
-            handledByHerdr = true
-        } else {
-            handledByHerdr = false
+            return
         }
-        let completionText = (handledByMirror || handledByHerdr) ? "" : text
+        deliverRuntimeClipboardReadCompletion(
+            text: text,
+            consumed: handledByMirror,
+            requestID: requestID,
+            stateAddress: stateAddress,
+            surface: surface,
+            terminalSurface: terminalSurface
+        )
+    }
+
+    @MainActor
+    private func deliverRuntimeClipboardReadCompletion(
+        text: String,
+        consumed: Bool,
+        requestID: UInt,
+        stateAddress: UInt,
+        surface: ghostty_surface_t,
+        terminalSurface: TerminalSurface
+    ) {
+        let completionText = consumed ? "" : text
         completionText.withCString { pointer in
             ghostty_surface_complete_clipboard_request(
                 surface,

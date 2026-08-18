@@ -31,10 +31,14 @@ final class RemoteHerdrSessionHost {
     private var panelIdByTab: [String: UUID] = [:]
     private var tabIdByPanel: [UUID: String] = [:]
     private var windowMirrorByTabId: [String: RemoteHerdrWindowMirrorHost] = [:]
-    private var paneRoute = RemoteHerdrPaneRoute()
+    private var surfaceToPane: [UUID: String] = [:]
+    private var paneRoute = RemoteHerdrPaneRoute(loggingEnabled: false)
     private var lastLayouts: [String: RemoteHerdrLayoutNode] = [:]
     private var eventTask: Task<Void, Never>?
     private var outputPollTask: Task<Void, Never>?
+    private var paneSendTasks: [String: Task<Void, Never>] = [:]
+    private var snapshotRefreshTask: Task<Void, Never>?
+    private var snapshotRefreshPending = false
     private var isTornDown = false
     var nativeLive = false
     private var needsReseed = false
@@ -87,8 +91,17 @@ final class RemoteHerdrSessionHost {
         eventTask = nil
         outputPollTask?.cancel()
         outputPollTask = nil
+        snapshotRefreshTask?.cancel()
+        snapshotRefreshTask = nil
+        snapshotRefreshPending = false
+        for task in paneSendTasks.values {
+            task.cancel()
+        }
+        paneSendTasks.removeAll()
+        surfaceToPane.removeAll()
         for (tabID, mirror) in windowMirrorByTabId {
             if let panelId = panelIdByTab[tabID] {
+                removeSurfaceMappings(for: mirror)
                 workspace?.setRemoteHerdrWindowMirror(nil, forPanelId: panelId)
             }
             mirror.teardown()
@@ -137,22 +150,12 @@ final class RemoteHerdrSessionHost {
 
     /// Whether `surfaceId` belongs to a pane panel owned by this session.
     func containsSurface(_ surfaceId: UUID) -> Bool {
-        for mirror in windowMirrorByTabId.values {
-            if mirror.panelsByPaneId.values.contains(where: { $0.id == surfaceId }) {
-                return true
-            }
-        }
-        return false
+        surfaceToPane[surfaceId] != nil
     }
 
     /// Herdr pane id for a Ghostty surface, if this session owns it.
     func paneID(forSurfaceId surfaceId: UUID) -> String? {
-        for mirror in windowMirrorByTabId.values {
-            for (paneID, panel) in mirror.panelsByPaneId where panel.id == surfaceId {
-                return paneID
-            }
-        }
-        return nil
+        surfaceToPane[surfaceId]
     }
 
     /// User split from a mirrored pane → `pane.split` (never a local Bonsplit split).
@@ -276,6 +279,7 @@ final class RemoteHerdrSessionHost {
                   let panelId = panelIdByTab[tabID]
             else { return }
             if let mirror = windowMirrorByTabId.removeValue(forKey: tabID) {
+                removeSurfaceMappings(for: mirror)
                 workspace.setRemoteHerdrWindowMirror(nil, forPanelId: panelId)
                 mirror.teardown()
             }
@@ -303,6 +307,7 @@ final class RemoteHerdrSessionHost {
         guard let panelId = panelIdByTab[window.tabID] else { return }
         if let mirror = windowMirrorByTabId[window.tabID] {
             mirror.apply(window: window)
+            syncSurfaceToPane(from: mirror)
             return
         }
         let mirror = RemoteHerdrWindowMirrorHost(
@@ -346,6 +351,7 @@ final class RemoteHerdrSessionHost {
         mirror.observeWorkspaceBonsplitConfiguration()
         mirror.apply(window: window)
         windowMirrorByTabId[window.tabID] = mirror
+        syncSurfaceToPane(from: mirror)
         workspace.setRemoteHerdrWindowMirror(mirror, forPanelId: panelId)
         // Retire container terminal once inner panes exist.
         if !mirror.panelsByPaneId.isEmpty,
@@ -428,9 +434,12 @@ final class RemoteHerdrSessionHost {
             }
         }
         guard paneRoute.routeInput(paneID: paneID, data: data) != nil else { return }
-        Task {
+        let previous = paneSendTasks[paneID]
+        paneSendTasks[paneID] = Task { [weak self] in
+            await previous?.value
+            guard let self, !self.isTornDown else { return }
             do {
-                try await client.sendKeys(paneID: paneID, data: data)
+                try await self.client.sendKeys(paneID: paneID, data: data)
             } catch {
                 Self.logger.debug("remote-herdr: pane.send failed")
             }
@@ -493,9 +502,27 @@ final class RemoteHerdrSessionHost {
              .workspaceUpserted, .workspaceClosed, .agentUpserted, .agentClosed,
              .agentStatusUpdated:
             // Coalesce structural churn into a fresh snapshot.
-            Task { @MainActor in
-                await self.refreshFromSnapshot()
+            scheduleSnapshotRefresh()
+        }
+    }
+
+    private func scheduleSnapshotRefresh() {
+        if snapshotRefreshTask != nil {
+            snapshotRefreshPending = true
+            return
+        }
+        snapshotRefreshTask = Task { [weak self] in
+            defer {
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.snapshotRefreshTask = nil
+                    if self.snapshotRefreshPending {
+                        self.snapshotRefreshPending = false
+                        self.scheduleSnapshotRefresh()
+                    }
+                }
             }
+            await self?.refreshFromSnapshot()
         }
     }
 
@@ -512,14 +539,18 @@ final class RemoteHerdrSessionHost {
     private func startOutputPollLoop() {
         outputPollTask?.cancel()
         outputPollTask = Task { [weak self] in
+            // Herdr exposes no %output stream; poll pane.read is intentional.
+            var idlePolls = 0
             while !Task.isCancelled {
                 guard let self, !self.isTornDown else { break }
-                let paneIDs = await MainActor.run { self.livePaneIDs() }
+                let paneIDs = await MainActor.run { self.pollablePaneIDs() }
+                var readAny = false
                 for paneID in paneIDs {
                     if Task.isCancelled { break }
                     do {
                         let data = try await self.client.readPane(paneID: paneID, lines: 200)
-                        if let text = String(data: data, encoding: .utf8) {
+                        if let text = String(data: data, encoding: .utf8), !text.isEmpty {
+                            readAny = true
                             await MainActor.run {
                                 self.ensurePaneBound(paneID)
                                 self.routeOutput(paneID: paneID, text: text)
@@ -533,17 +564,41 @@ final class RemoteHerdrSessionHost {
                     await MainActor.run { self.needsReseed = false }
                     await self.refreshFromSnapshot()
                 }
-                try? await Task.sleep(for: .milliseconds(150))
+                if readAny {
+                    idlePolls = 0
+                } else {
+                    idlePolls += 1
+                }
+                // Provider-gap fallback only: Herdr has no push output stream.
+                let delayMs = idlePolls > 3 ? 500 : 150
+                try? await Task.sleep(for: .milliseconds(delayMs))
             }
         }
     }
 
-    private func livePaneIDs() -> [String] {
+    private func pollablePaneIDs() -> [String] {
         var ids: [String] = []
         for mirror in windowMirrorByTabId.values {
-            ids.append(contentsOf: mirror.panelsByPaneId.keys)
+            for paneID in mirror.panelsByPaneId.keys where paneRoute.surfaces[paneID] != nil {
+                ids.append(paneID)
+            }
         }
         return ids.sorted()
+    }
+
+    private func syncSurfaceToPane(from mirror: RemoteHerdrWindowMirrorHost) {
+        for (paneID, panel) in mirror.panelsByPaneId {
+            surfaceToPane[panel.id] = paneID
+            if paneRoute.surfaces[paneID] == nil {
+                paneRoute.bind(paneID: paneID, surfaceID: panel.id.uuidString)
+            }
+        }
+    }
+
+    private func removeSurfaceMappings(for mirror: RemoteHerdrWindowMirrorHost) {
+        for panel in mirror.panelsByPaneId.values {
+            surfaceToPane.removeValue(forKey: panel.id)
+        }
     }
 
     private func ensurePaneBound(_ paneID: String) {
