@@ -459,9 +459,7 @@ final class RemoteHerdrSessionHost {
             do {
                 for try await event in self.client.events() {
                     if Task.isCancelled { break }
-                    await MainActor.run {
-                        self.handleEvent(event)
-                    }
+                    await self.handleEvent(event)
                 }
             } catch is CancellationError {
                 return
@@ -471,15 +469,12 @@ final class RemoteHerdrSessionHost {
         }
     }
 
-    private func handleEvent(_ event: NestedTopologyEvent) {
+    private func handleEvent(_ event: NestedTopologyEvent) async {
         guard !isTornDown else { return }
         switch event {
         case .replaceSnapshot(let snapshot):
-            Task { [weak self] in
-                guard let self else { return }
-                await self.applyQueue.enqueue(.snapshot) {
-                    await self.applyReplaceSnapshot(snapshot)
-                }
+            await applyQueue.enqueue(.snapshot) {
+                await self.applyReplaceSnapshot(snapshot)
             }
         case .focusChanged(let focus):
             if let paneID = focus.paneID?.rawID {

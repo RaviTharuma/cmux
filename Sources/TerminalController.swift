@@ -2833,9 +2833,7 @@ class TerminalController {
             "workspace.remote.terminal_session_launching",
             "workspace.remote.terminal_session_connected", "workspace.remote.terminal_session_end",
             "remote.tmux.sessions", "remote.tmux.attach", "remote.tmux.detach", "remote.tmux.state", "remote.tmux.mirror", "remote.tmux.window", "remote.tmux.pane_grids", "remote.tmux.pane_surfaces",
-            // remote.herdr.* appended below only when the beta flag is on
-            "nested.topology.list",
-            "nested.node.focus",
+            // remote.herdr.* and nested.topology.* appended below only when enabled
             "session.restore_previous",
             "settings.open",
             "feedback.open",
@@ -3009,6 +3007,12 @@ class TerminalController {
                 "remote.herdr.pane_grids",
             ])
         }
+        if NestedTopologyController.isEnabled {
+            methods.append(contentsOf: [
+                "nested.topology.list",
+                "nested.node.focus",
+            ])
+        }
         methods.append(contentsOf: ControlCommandExecutionPolicy.simulatorMethods)
 #if DEBUG
         methods.append(contentsOf: Self.v2DebugMethodNames)
@@ -3022,10 +3026,14 @@ class TerminalController {
             "methods": methods.sorted(),
             // Keep mobile host capabilities and add nested-topology semantics
             // (PR4/PR5). Existing clients that only read `methods` remain compatible.
-            "capabilities": MobileHostService.mobileHostCapabilities + [
-                NestedTopologyPublicCapability.readV1.rawValue,
-                NestedTopologyPublicCapability.focusV1.rawValue,
-            ],
+            "capabilities": MobileHostService.mobileHostCapabilities + (
+                NestedTopologyController.isEnabled
+                    ? [
+                        NestedTopologyPublicCapability.readV1.rawValue,
+                        NestedTopologyPublicCapability.focusV1.rawValue,
+                    ]
+                    : []
+            ),
         ]
     }
 

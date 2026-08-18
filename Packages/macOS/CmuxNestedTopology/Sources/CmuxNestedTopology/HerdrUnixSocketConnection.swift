@@ -90,8 +90,8 @@ final class HerdrUnixSocketConnection: @unchecked Sendable {
                 getsockopt(socketFD, SOL_SOCKET, SO_ERROR, errorPtr, &soLen)
             }
             if gotError != 0 || soError != 0 {
-                DarwinClose(socketFD)
                 let code = gotError != 0 ? errno : soError
+                DarwinClose(socketFD)
                 if code == ETIMEDOUT {
                     throw NestedTopologyProviderError.connectTimeout
                 }

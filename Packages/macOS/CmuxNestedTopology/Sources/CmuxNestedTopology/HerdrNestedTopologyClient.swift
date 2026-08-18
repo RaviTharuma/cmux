@@ -13,6 +13,7 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     private let reconnectScheduler: any NestedReconnectScheduler
     private var associations: NestedAssociationStore
     private var latestHandshake: NestedProviderHandshake?
+    private var handshakeTask: Task<NestedProviderHandshake, any Error>?
 
     /// Creates a Herdr nested topology client.
     ///
@@ -49,6 +50,16 @@ public actor HerdrNestedTopologyClient: NestedTopologyProviderClient {
     }
 
     public func handshake() async throws -> NestedProviderHandshake {
+        if let handshakeTask {
+            return try await handshakeTask.value
+        }
+        let task = Task { try await self.performHandshake() }
+        handshakeTask = task
+        defer { handshakeTask = nil }
+        return try await task.value
+    }
+
+    private func performHandshake() async throws -> NestedProviderHandshake {
         let response = try await performRequest(method: "ping", params: [:])
         guard let result = response.result, case .pong(let pong) = result else {
             throw NestedTopologyProviderError.missingRequiredField("result.type=pong")

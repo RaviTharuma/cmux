@@ -367,6 +367,25 @@ import Testing
         #expect(snapshot.panes.count == 1)
     }
 
+    @Test func concurrentHandshakeSharesOneInstance() async throws {
+        let server = try FakeHerdrUnixSocketServer { _, id, method in
+            switch method {
+            case "ping":
+                return [HerdrFakeFixtures.line(HerdrFakeFixtures.pongJSON(id: id))]
+            default:
+                return [HerdrFakeFixtures.line(HerdrFakeFixtures.errorJSON(id: id))]
+            }
+        }
+        defer { server.shutdown() }
+
+        let client = makeClient(socketPath: server.path)
+        async let first = client.handshake()
+        async let second = client.handshake()
+        let (a, b) = try await (first, second)
+        #expect(a.providerInstanceID == b.providerInstanceID)
+        #expect(await client.currentHandshake()?.providerInstanceID == a.providerInstanceID)
+    }
+
     @Test func lineReaderHandlesFragmentsAndMultiLineChunks() throws {
         var reader = HerdrJSONLineReader(maxLineUTF8ByteCount: 1024)
         #expect(try reader.append(Data("{\"a\":".utf8)).isEmpty)
