@@ -321,7 +321,7 @@ import Testing
         let handoffDir = try AttachmentTestFixtures.makeHandoffDirectory()
         defer { try? FileManager.default.removeItem(at: handoffDir) }
 
-        func makeClient(surface: UUID, instance: String) -> StubNestedTopologyProviderClient {
+        @Sendable func makeClient(surface: UUID, instance: String) -> StubNestedTopologyProviderClient {
             StubNestedTopologyProviderClient(
                 handshake: { AttachmentTestFixtures.handshake(instance: instance) },
                 snapshot: {

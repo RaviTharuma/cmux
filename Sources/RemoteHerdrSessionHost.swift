@@ -36,8 +36,8 @@ final class RemoteHerdrSessionHost {
     private var lastLayouts: [String: RemoteHerdrLayoutNode] = [:]
     private var eventTask: Task<Void, Never>?
     private var outputPollTask: Task<Void, Never>?
-    private var paneSendTasks: [String: Task<Void, Never>] = [:]
     private var snapshotRefreshTask: Task<Void, Never>?
+    private let applyQueue = RemoteHerdrSerialWorkQueue()
     private var snapshotRefreshPending = false
     private var isTornDown = false
     var nativeLive = false
@@ -94,10 +94,6 @@ final class RemoteHerdrSessionHost {
         snapshotRefreshTask?.cancel()
         snapshotRefreshTask = nil
         snapshotRefreshPending = false
-        for task in paneSendTasks.values {
-            task.cancel()
-        }
-        paneSendTasks.removeAll()
         surfaceToPane.removeAll()
         for (tabID, mirror) in windowMirrorByTabId {
             if let panelId = panelIdByTab[tabID] {
@@ -184,11 +180,8 @@ final class RemoteHerdrSessionHost {
             return false
         }
         guard let paneID = paneID(forSurfaceId: surfaceId) else { return false }
-        do {
-            try await client.sendKeys(paneID: paneID, data: Data(text.utf8))
-            return true
-        } catch {
-            return false
+        return await applyQueue.enqueue(.send(paneID: paneID)) {
+            await self.performSend(paneID: paneID, data: Data(text.utf8))
         }
     }
 
@@ -230,7 +223,7 @@ final class RemoteHerdrSessionHost {
             windows: windows,
             previousTabIDs: previousTabIDs
         )
-        let titles = Dictionary(uniqueKeysWithValues: windows.map { ($0.tabID, $0.title) })
+        let titles = RemoteHerdrSessionApply.titlesByTabID(windows)
         let actions = RemoteHerdrSessionApply.actions(
             reconcile,
             titles: titles,
@@ -436,15 +429,16 @@ final class RemoteHerdrSessionHost {
                 return
             }
         }
+        forwardBytes(data, toPane: paneID)
+    }
+
+    private func forwardBytes(_ data: Data, toPane paneID: String) {
+        guard !isTornDown else { return }
         guard paneRoute.routeInput(paneID: paneID, data: data) != nil else { return }
-        let previous = paneSendTasks[paneID]
-        paneSendTasks[paneID] = Task { [weak self] in
-            await previous?.value
-            guard let self, !self.isTornDown else { return }
-            do {
-                try await self.client.sendKeys(paneID: paneID, data: data)
-            } catch {
-                Self.logger.debug("remote-herdr: pane.send failed")
+        Task { [weak self] in
+            guard let self else { return }
+            await self.applyQueue.enqueue(.send(paneID: paneID)) {
+                _ = await self.performSend(paneID: paneID, data: data)
             }
         }
     }
@@ -483,12 +477,10 @@ final class RemoteHerdrSessionHost {
         guard !isTornDown else { return }
         switch event {
         case .replaceSnapshot(let snapshot):
-            Task { @MainActor in
-                do {
-                    let layouts = try await self.client.snapshotWithLayouts().layouts
-                    self.applySession(snapshot: snapshot, layouts: layouts)
-                } catch {
-                    self.applySession(snapshot: snapshot, layouts: self.lastLayouts)
+            Task { [weak self] in
+                guard let self else { return }
+                await self.applyQueue.enqueue(.snapshot) {
+                    await self.applyReplaceSnapshot(snapshot)
                 }
             }
         case .focusChanged(let focus):
@@ -529,7 +521,35 @@ final class RemoteHerdrSessionHost {
         }
     }
 
+    private func performSend(paneID: String, data: Data) async -> Bool {
+        guard !isTornDown else { return false }
+        do {
+            try await client.sendKeys(paneID: paneID, data: data)
+            return true
+        } catch {
+            Self.logger.debug("remote-herdr: pane.send failed")
+            return false
+        }
+    }
+
+    private func applyReplaceSnapshot(_ snapshot: NestedTopologySnapshot) async {
+        guard !isTornDown else { return }
+        do {
+            let layouts = try await client.snapshotWithLayouts().layouts
+            applySession(snapshot: snapshot, layouts: layouts)
+        } catch {
+            applySession(snapshot: snapshot, layouts: lastLayouts)
+        }
+    }
+
     private func refreshFromSnapshot() async {
+        guard !isTornDown else { return }
+        await applyQueue.enqueue(.snapshot) {
+            await self.performRefreshFromSnapshot()
+        }
+    }
+
+    private func performRefreshFromSnapshot() async {
         guard !isTornDown else { return }
         do {
             let (snapshot, layouts) = try await client.snapshotWithLayouts()

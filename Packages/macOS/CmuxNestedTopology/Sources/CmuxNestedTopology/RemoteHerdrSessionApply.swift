@@ -31,6 +31,19 @@ public struct RemoteHerdrSessionAction: Hashable, Sendable {
 /// live windows first, close leftovers, drop the workspace default tab,
 /// then reorder the strip to Herdr tab numbers.
 public enum RemoteHerdrSessionApply {
+
+    /// Last title wins when the provider repeats a `tabID`.
+    ///
+    /// - Parameter windows: Provider windows, possibly with duplicate tab ids.
+    /// - Returns: `tabID` → title. Never traps on duplicates.
+    public static func titlesByTabID(_ windows: [RemoteHerdrWindow]) -> [String: String] {
+        var titles: [String: String] = [:]
+        for window in windows {
+            titles[window.tabID] = window.title
+        }
+        return titles
+    }
+
     /// Builds the ordered verb list for one ``RemoteHerdrSessionReconcile``.
     public static func actions(
         _ session: RemoteHerdrSessionReconcile,

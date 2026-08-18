@@ -117,18 +117,24 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
         let (next, result) = RemoteHerdrWindowMirror.apply(window: window, previous: previous)
         state = next
         title = RemoteHerdrControl.applySessionTitle(window.title, current: title) ?? window.title
-        let plan = RemoteHerdrImpose.plan(
+        var log: [String] = []
+        if let plan = RemoteHerdrImpose.plan(
             from: result,
             previousRendered: previousRendered,
             title: window.title,
             hold: dragHold
-        )
-        let actions = RemoteHerdrHostApply.actions(result: result, plan: plan)
-        var log: [String] = []
-        isApplyingLayout = true
-        defer { isApplyingLayout = false }
-        for action in actions {
-            log.append(applyHostAction(action))
+        ) {
+            let actions = RemoteHerdrHostApply.actions(result: result, plan: plan)
+            isApplyingLayout = true
+            defer { isApplyingLayout = false }
+            for action in actions {
+                log.append(applyHostAction(action))
+            }
+        } else {
+            for paneID in result.createdPaneIDs {
+                makePanel(paneID: paneID)
+                log.append("make_panel:\(paneID)")
+            }
         }
         io.setLivePanes(next.paneIDs)
         focus.livePaneIDs = next.paneIDs
@@ -403,11 +409,7 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             windows: windows,
             previousTabIDs: previousTabIDs
         )
-        var titles: [String: String] = [:]
-        for window in windows {
-            // Last write wins on duplicate tabIDs — never trap on provider data.
-            titles[window.tabID] = window.title
-        }
+        let titles = RemoteHerdrSessionApply.titlesByTabID(windows)
         let actions = RemoteHerdrSessionApply.actions(
             session,
             titles: titles,
@@ -447,7 +449,7 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     public func attach(
         sessions: [RemoteHerdrDiscoveredSession],
         activate: Bool = true,
-        activeWindowID: String = "",
+        activeWindowID: String? = nil,
         liveWindows: [String] = []
     ) -> [String: Any] {
         guard enabled else { return ["ok": false, "outcome": "disabled"] }
@@ -483,6 +485,7 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
         return [
             "ok": plan.outcome == "mirrored" || plan.outcome == "reused",
             "outcome": plan.outcome,
+            "window_id": plan.windowID as Any,
             "post_attach": plan.postAttach as Any,
         ]
     }
@@ -526,7 +529,7 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     public func restore(
         sessions: [RemoteHerdrDiscoveredSession],
         windows: [RemoteHerdrWindow],
-        activeWindowID: String = "",
+        activeWindowID: String? = nil,
         liveWindows: [String] = []
     ) -> [String: Any] {
         let record = RemoteHerdrRestoreRecord(
@@ -558,6 +561,7 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
             "ok": (plan.outcome == "mirrored" || plan.outcome == "reused")
                 && (applied["ok"] as? Bool == true),
             "mode": "reattach",
+            "window_id": plan.windowID as Any,
             "post_attach": RemoteHerdrLifecycle.postReseed,
         ]
     }

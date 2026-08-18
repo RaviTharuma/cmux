@@ -139,12 +139,43 @@ import Testing
         let result = host.restore(
             sessions: [RemoteHerdrDiscoveredSession(sessionID: "sess-1", name: "main")],
             windows: [window()],
-            activeWindowID: "w1",
-            liveWindows: ["w1"]
+            activeWindowID: "win-restore",
+            liveWindows: ["win-restore"]
         )
         #expect(result["mode"] as? String == "reattach")
         #expect(result["post_attach"] as? String == RemoteHerdrLifecycle.postReseed)
         #expect(host.windows["w2:t1"] != nil)
+        #expect(result["window_id"] as? String == "win-restore")
+        #expect(result["window_id"] as? String != "w1")
+    }
+
+    @Test func duplicateTabIDsLastTitleWinsWithoutTrapping() {
+        let host = RemoteHerdrLiveHost()
+        let result = host.applySession([
+            window(tabID: "dup", title: "First"),
+            window(tabID: "dup", title: "Last"),
+        ])
+        #expect(result["ok"] as? Bool == true)
+        #expect(host.windows["dup"]?.title == "Last")
+        #expect(host.previousTitles["dup"] == "Last")
+        #expect(host.windows.count == 1)
+        #expect(RemoteHerdrSessionApply.titlesByTabID([
+            window(tabID: "dup", title: "First"),
+            window(tabID: "dup", title: "Last"),
+        ])["dup"] == "Last")
+    }
+
+    @Test func attachUsesProvidedLiveWindowIdentity() {
+        let host = RemoteHerdrLiveHost()
+        let result = host.attach(
+            sessions: [RemoteHerdrDiscoveredSession(sessionID: "sess-1", name: "main")],
+            activeWindowID: "win-live",
+            liveWindows: ["win-live", "win-other"]
+        )
+        #expect(result["ok"] as? Bool == true)
+        #expect(result["outcome"] as? String == "mirrored")
+        #expect(result["window_id"] as? String == "win-live")
+        #expect(result["window_id"] as? String != "w1")
     }
 
     @Test func busyCloseAndObserve() {

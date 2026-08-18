@@ -26,7 +26,7 @@ import Testing
         )
     }
 
-    @Test func firstApplyCreatesPanelsBeforeRebuild() {
+    @Test func firstApplyCreatesPanelsBeforeRebuild() throws {
         let window = RemoteHerdrWindow(
             tabID: "w2:t1",
             title: "Build",
@@ -35,7 +35,7 @@ import Testing
             activePaneID: "w2:p2"
         )
         let (_, result) = RemoteHerdrWindowMirror.apply(window: window, previous: nil)
-        let plan = RemoteHerdrImpose.plan(from: result, title: "Build")
+        let plan = try #require(RemoteHerdrImpose.plan(from: result, title: "Build"))
         let actions = RemoteHerdrHostApply.actions(result: result, plan: plan)
         #expect(actions.map(\.op).prefix(3) == ["create_panel", "create_panel", "rebuild_tree"])
         #expect(actions[0].paneID == "w2:p1")
@@ -45,7 +45,7 @@ import Testing
         #expect(actions.contains { $0.op == "impose_divider" })
     }
 
-    @Test func heldSplitSkipsImpose() {
+    @Test func heldSplitSkipsImpose() throws {
         let window = RemoteHerdrWindow(
             tabID: "w2:t1",
             title: "Build",
@@ -56,7 +56,7 @@ import Testing
         let hold = RemoteHerdrImpose.beginDividerDrag(
             splitKey: "s", axis: .horizontal, assignedCells: 50
         )
-        let plan = RemoteHerdrImpose.plan(from: result, hold: hold)
+        let plan = try #require(RemoteHerdrImpose.plan(from: result, hold: hold))
         let actions = RemoteHerdrHostApply.actions(result: result, plan: plan)
         #expect(actions.filter { $0.op == "impose_divider" }.isEmpty)
     }

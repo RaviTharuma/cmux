@@ -171,19 +171,21 @@ extension RemoteHerdrWindowMirrorHost {
             rebuildBonsplitTree()
             return
         }
-        let tabId = tabIdByPaneId[paneID]
+        var index = RemoteHerdrTabPaneIndex(
+            tabIdByPaneId: tabIdByPaneId,
+            paneIdByTabId: paneIdByTabId
+        )
+        let tabId = index.removeLeaf(paneID: paneID)
+        tabIdByPaneId = index.tabIdByPaneId
+        paneIdByTabId = index.paneIdByTabId
         if let tabId {
             _ = bonsplitController.closeTab(tabId, inPane: pane)
         }
         if bonsplitController.allPaneIds.count > 1 {
             _ = bonsplitController.closePane(pane)
         }
-        tabIdByPaneId.removeValue(forKey: paneID)
         paneIdByPaneId.removeValue(forKey: paneID)
         paneIdByBonsplitPane.removeValue(forKey: pane)
-        if let tabId {
-            paneIdByTabId.removeValue(forKey: tabId)
-        }
     }
 
     func beginApplyingRemoteLayout() {

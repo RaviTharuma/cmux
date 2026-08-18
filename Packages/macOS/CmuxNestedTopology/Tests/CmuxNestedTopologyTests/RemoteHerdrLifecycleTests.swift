@@ -167,10 +167,13 @@ import Testing
 
     @Test func reentrantGuard() {
         var registry = RemoteHerdrAttachRegistry()
-        #expect(registry.beginAttach("abc"))
-        #expect(registry.beginAttach("abc") == false)
+        let first = registry.beginAttach("abc")
+        #expect(first)
+        let second = registry.beginAttach("abc")
+        #expect(second == false)
         registry.endAttach("abc")
-        #expect(registry.beginAttach("abc"))
+        let third = registry.beginAttach("abc")
+        #expect(third)
     }
 
     @Test func everyHostCloseDetaches() {
