@@ -7432,11 +7432,37 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
     }
 
     @objc private func splitHorizontally(_ sender: Any?) {
-        _ = splitCurrentSurface(direction: .down)
+        performSplitCurrentSurface(direction: .down)
     }
 
     @objc private func splitVertically(_ sender: Any?) {
-        _ = splitCurrentSurface(direction: .right)
+        performSplitCurrentSurface(direction: .right)
+    }
+
+    /// Menu/key path. Sync tmux/local splits report failure immediately.
+    /// Herdr pane.split is async: own the Task, cancel prior work, beep on false.
+    private func performSplitCurrentSurface(direction: SplitDirection) {
+        guard let surfaceId = terminalSurface?.id else {
+            NSSound.beep()
+            return
+        }
+        if let herdr = AppDelegate.shared?.remoteHerdrController,
+           herdr.isMirrorPaneSurface(surfaceId) {
+            remoteHerdrSplitTask?.cancel()
+            remoteHerdrSplitTask = Task { @MainActor [weak self] in
+                let ok = await herdr.handleMirrorSplitRequested(
+                    surfaceId: surfaceId,
+                    vertical: !direction.isHorizontal
+                )
+                guard let self, !Task.isCancelled else { return }
+                if !ok { NSSound.beep() }
+                self.remoteHerdrSplitTask = nil
+            }
+            return
+        }
+        if !splitCurrentSurface(direction: direction) {
+            NSSound.beep()
+        }
     }
 
     @discardableResult
@@ -7447,20 +7473,6 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         if let controller = AppDelegate.shared?.remoteTmuxController,
            controller.isMirrorPaneSurface(surfaceId) {
             return controller.handleMirrorSplitRequested(surfaceId: surfaceId, vertical: !direction.isHorizontal, focusIntent: .focusCreatedPane)
-        }
-        if let herdr = AppDelegate.shared?.remoteHerdrController,
-           herdr.isMirrorPaneSurface(surfaceId) {
-            // Sync UI expects Bool; own the async RPC (cancel prior in-flight split).
-            remoteHerdrSplitTask?.cancel()
-            remoteHerdrSplitTask = Task { @MainActor [weak self] in
-                _ = await herdr.handleMirrorSplitRequested(
-                    surfaceId: surfaceId,
-                    vertical: !direction.isHorizontal
-                )
-                if Task.isCancelled { return }
-                self?.remoteHerdrSplitTask = nil
-            }
-            return true
         }
         guard let tabId,
               let app = AppDelegate.shared,
@@ -7641,6 +7653,7 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
         )
     }
     deinit {
+        remoteHerdrSplitTask?.cancel()
         keyboardCopyModeRenderedFrameDemandRelease?()
         selectionAccessibilitySignal.finish()
         if titleUpdateSurfaceKey != nil {
