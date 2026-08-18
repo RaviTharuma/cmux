@@ -170,6 +170,46 @@ public struct RemoteHerdrLayoutNode: Hashable, Sendable, Codable {
         }
     }
 
+    /// Exact-axis flags for ``RemoteHerdrLifecycle.gridMatch``.
+    ///
+    /// Exact on the split axis of the nearest parent split; fill on the other.
+    /// Sole / root panes report both axes exact.
+    public func exactAxisFlags(forPaneID paneID: String) -> (exactCols: Bool, exactRows: Bool)? {
+        guard firstLeaf(withPaneID: paneID) != nil else { return nil }
+        if let flags = exactAxisFlags(forPaneID: paneID, parentIsHorizontal: nil) {
+            return flags
+        }
+        return (true, true)
+    }
+
+    private func exactAxisFlags(
+        forPaneID paneID: String,
+        parentIsHorizontal: Bool?
+    ) -> (exactCols: Bool, exactRows: Bool)? {
+        switch content {
+        case let .pane(id):
+            guard id == paneID else { return nil }
+            if let parentIsHorizontal {
+                return parentIsHorizontal ? (true, false) : (false, true)
+            }
+            return (true, true)
+        case let .horizontal(children):
+            for child in children {
+                if let flags = child.exactAxisFlags(forPaneID: paneID, parentIsHorizontal: true) {
+                    return flags
+                }
+            }
+            return nil
+        case let .vertical(children):
+            for child in children {
+                if let flags = child.exactAxisFlags(forPaneID: paneID, parentIsHorizontal: false) {
+                    return flags
+                }
+            }
+            return nil
+        }
+    }
+
     private func collectSplitSpecs(into specs: inout [RemoteHerdrSplitSpec]) {
         let children: [RemoteHerdrLayoutNode]
         let direction: RemoteHerdrSplitDirection

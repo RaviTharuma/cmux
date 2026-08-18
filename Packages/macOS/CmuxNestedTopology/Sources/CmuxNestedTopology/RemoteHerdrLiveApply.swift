@@ -341,18 +341,15 @@ public final class RemoteHerdrLiveWindow: @unchecked Sendable {
                 assignedCols = max(1, leaf.width)
                 assignedRows = max(1, leaf.height)
             }
-            let exactCols = layout?.firstLeaf(withPaneID: paneID) != nil
-                && surface.cols == assignedCols
-            let exactRows = layout?.firstLeaf(withPaneID: paneID) != nil
-                && surface.rows == assignedRows
+            let axis = layout?.exactAxisFlags(forPaneID: paneID) ?? (false, false)
             panes.append([
                 "pane_id": paneID,
                 "assigned_cols": assignedCols,
                 "assigned_rows": assignedRows,
                 "rendered_cols": surface.cols,
                 "rendered_rows": surface.rows,
-                "exact_cols": exactCols,
-                "exact_rows": exactRows,
+                "exact_cols": axis.exactCols,
+                "exact_rows": axis.exactRows,
                 "has_panel": surface.live,
             ])
         }
@@ -440,8 +437,8 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     public func attach(
         sessions: [RemoteHerdrDiscoveredSession],
         activate: Bool = true,
-        activeWindowID: String = "w1",
-        liveWindows: [String] = ["w1"]
+        activeWindowID: String = "",
+        liveWindows: [String] = []
     ) -> [String: Any] {
         guard enabled else { return ["ok": false, "outcome": "disabled"] }
         let plan = RemoteHerdrAttachPlanner.plan(
@@ -519,8 +516,8 @@ public final class RemoteHerdrLiveHost: @unchecked Sendable {
     public func restore(
         sessions: [RemoteHerdrDiscoveredSession],
         windows: [RemoteHerdrWindow],
-        activeWindowID: String = "w1",
-        liveWindows: [String] = ["w1"]
+        activeWindowID: String = "",
+        liveWindows: [String] = []
     ) -> [String: Any] {
         let record = RemoteHerdrRestoreRecord(
             endpointHash: RemoteHerdrLifecycle.endpointHash(socketPath),

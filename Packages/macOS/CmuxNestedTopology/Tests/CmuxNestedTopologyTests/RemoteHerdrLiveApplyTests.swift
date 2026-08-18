@@ -138,7 +138,9 @@ import Testing
         _ = host.applySession([window()])
         let result = host.restore(
             sessions: [RemoteHerdrDiscoveredSession(sessionID: "sess-1", name: "main")],
-            windows: [window()]
+            windows: [window()],
+            activeWindowID: "w1",
+            liveWindows: ["w1"]
         )
         #expect(result["mode"] as? String == "reattach")
         #expect(result["post_attach"] as? String == RemoteHerdrLifecycle.postReseed)

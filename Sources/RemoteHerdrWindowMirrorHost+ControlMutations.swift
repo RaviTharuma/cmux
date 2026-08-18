@@ -4,14 +4,16 @@ import Foundation
 @MainActor
 extension RemoteHerdrWindowMirrorHost {
     /// Forwards typed bytes to a Herdr pane (`pane.send` / `pane.send_keys`).
+    ///
+    /// Prefers the session-host serialized send channel so keystrokes stay ordered.
     @discardableResult
     func sendInput(toPane paneID: String, text: String) -> Bool {
         guard !text.isEmpty, panelsByPaneId[paneID] != nil else { return false }
-        let data = Data(text.utf8)
-        Task { @MainActor [paneIO] in
-            try? await paneIO.sendKeys(paneID: paneID, data: data)
+        if let onSendInputRequest {
+            onSendInputRequest(paneID, text)
+            return true
         }
-        return true
+        return false
     }
 
     /// User chrome split → ``pane.split`` (never a local Bonsplit split).

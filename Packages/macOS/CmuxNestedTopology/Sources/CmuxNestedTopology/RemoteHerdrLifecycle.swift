@@ -79,15 +79,14 @@ public enum RemoteHerdrLifecycle {
 
     /// Reuse a live connection; replace a dead one; otherwise start.
     ///
-    /// - Parameter started: When `exists` is false, a prior failed start
-    ///   (`started == false`) still maps to `"start"` so callers can retry.
-    ///   When `exists` is true, `started` is ignored because live process
-    ///   state (`exited`) is authoritative.
+    /// - Parameter started: When no process exists, always `"start"` (retry-safe
+    ///   even if a prior attempt set `started == false`). When a process exists
+    ///   and has not exited, require `started` so we do not treat an unowned
+    ///   pid as a reusable cmux connection.
     public static func connectionAction(started: Bool, exited: Bool, exists: Bool) -> String {
         guard exists else { return "start" }
-        _ = started
         if exited { return "replace" }
-        return "reuse"
+        return started ? "reuse" : "start"
     }
 
     /// Never insert a connection that failed to start.

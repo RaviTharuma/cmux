@@ -348,6 +348,9 @@ final class RemoteHerdrSessionHost {
                 await self?.resizePane(paneID, cols: cols, rows: rows)
             }
         }
+        mirror.onSendInputRequest = { [weak self] paneID, text in
+            self?.forwardInput(.bytes(Data(text.utf8)), toPane: paneID)
+        }
         mirror.observeWorkspaceBonsplitConfiguration()
         mirror.apply(window: window)
         windowMirrorByTabId[window.tabID] = mirror

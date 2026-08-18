@@ -156,7 +156,9 @@ import Testing
 
     @Test func connectionReuseAndCache() {
         #expect(RemoteHerdrLifecycle.connectionAction(started: true, exited: false, exists: false) == "start")
+        #expect(RemoteHerdrLifecycle.connectionAction(started: false, exited: false, exists: false) == "start")
         #expect(RemoteHerdrLifecycle.connectionAction(started: true, exited: false, exists: true) == "reuse")
+        #expect(RemoteHerdrLifecycle.connectionAction(started: false, exited: false, exists: true) == "start")
         #expect(RemoteHerdrLifecycle.connectionAction(started: true, exited: true, exists: true) == "replace")
         #expect(RemoteHerdrLifecycle.mayCacheConnection(started: false, exited: false) == false)
         #expect(RemoteHerdrLifecycle.mayCacheConnection(started: true, exited: false) == true)

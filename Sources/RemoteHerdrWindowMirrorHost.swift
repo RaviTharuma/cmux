@@ -54,6 +54,8 @@ final class RemoteHerdrWindowMirrorHost {
     @ObservationIgnored var onSplitPaneRequest: ((_ paneID: String, _ vertical: Bool) -> Void)?
     /// Divider / client size claim → ``pane.resize`` (session host owns the RPC).
     @ObservationIgnored var onResizePaneRequest: ((_ paneID: String, _ cols: Int, _ rows: Int) -> Void)?
+    /// Serialized pane input — owned by ``RemoteHerdrSessionHost`` (no fire-and-forget `pane.send`).
+    @ObservationIgnored var onSendInputRequest: ((_ paneID: String, _ text: String) -> Void)?
 
     /// Container size for feed-forward client claims (points).
     @ObservationIgnored var containerSizePt: CGSize?
@@ -278,15 +280,15 @@ final class RemoteHerdrWindowMirrorHost {
             let leaf = layout?.firstLeaf(withPaneID: paneID)
             let assignedCols = leaf.map { max(1, $0.width) } ?? 80
             let assignedRows = leaf.map { max(1, $0.height) } ?? 24
-            let hasLeaf = leaf != nil
+            let axis = layout?.exactAxisFlags(forPaneID: paneID) ?? (false, false)
             panes.append([
                 "pane_id": paneID,
                 "assigned_cols": assignedCols,
                 "assigned_rows": assignedRows,
                 "rendered_cols": assignedCols,
                 "rendered_rows": assignedRows,
-                "exact_cols": hasLeaf,
-                "exact_rows": hasLeaf,
+                "exact_cols": axis.exactCols,
+                "exact_rows": axis.exactRows,
                 "has_panel": true,
             ])
         }
