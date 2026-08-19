@@ -18,12 +18,18 @@ final class RemoteHerdrController {
     /// In-flight attach guards (tmux ``RemoteTmuxWindowRegistry`` twin).
     private var attachRegistry = RemoteHerdrAttachRegistry()
 
-    /// Shared plugin-writer handoff directory (same tree as nested topology).
+    /// Nested-topology lock files (sidebar / NestedPluginWriterHandoff).
     private let handoff: NestedPluginWriterHandoff
+
+    /// Plugin lease store (`writer-*` / `native-live`) matching ``cmux-herdr``.
+    private let pluginLeaseStore: RemoteHerdrHandoffStore
 
     init(handoffDirectory: URL? = nil) {
         let directory = handoffDirectory ?? Self.defaultHandoffDirectory()
         self.handoff = NestedPluginWriterHandoff(directoryURL: directory)
+        self.pluginLeaseStore = RemoteHerdrHandoffStore(
+            directories: RemoteHerdrHandoff.stateDirectories()
+        )
     }
 
     /// Beta gate: ``remoteHerdrMirror`` **or** nested topology.
@@ -234,6 +240,17 @@ final class RemoteHerdrController {
             hostStableSurfaceID: host.hostStableSurfaceID,
             attachmentID: host.attachmentID
         )
+        // Also claim the cmux-herdr lease files so plugin sync/watch/mirror yield.
+        // Writes fingerprint-scoped + global `native-live` under XDG / Application Support.
+        let fingerprint = pluginLeaseFingerprint(for: host)
+        pluginLeaseStore.releasePlugin(fingerprint: fingerprint)
+        if pluginLeaseStore.claimNative(
+            fingerprint: fingerprint,
+            socketPath: host.socketPath,
+            endpointHash: RemoteHerdrLifecycle.endpointHash(host.socketPath)
+        ) == nil {
+            Self.logger.warning("remote-herdr: plugin lease claim returned nil after release")
+        }
         host.nativeLive = true
     }
 
@@ -243,7 +260,13 @@ final class RemoteHerdrController {
         } catch {
             Self.logger.warning("remote-herdr: failed to release plugin writer handoff")
         }
+        pluginLeaseStore.releaseNative(fingerprint: pluginLeaseFingerprint(for: host))
         host.nativeLive = false
+    }
+
+    /// Fingerprint shared with plugin ``_parent_key`` when ``CMUX_SURFACE_ID`` is this UUID.
+    private func pluginLeaseFingerprint(for host: RemoteHerdrSessionHost) -> String {
+        host.hostStableSurfaceID.uuidString.lowercased()
     }
 
     private static func defaultHandoffDirectory() -> URL {
