@@ -43,6 +43,11 @@ final class RemoteHerdrSessionHost {
     var nativeLive = false
     private var needsReseed = false
 
+    /// Shared plugin associations file (title locks survive native→plugin handoff).
+    private let associationStore = RemoteHerdrAssociationStore(
+        directories: RemoteHerdrHandoff.stateDirectories()
+    )
+
     private static let logger = Logger(subsystem: "com.cmuxterm.app", category: "RemoteHerdrSession")
 
     init(
@@ -265,6 +270,13 @@ final class RemoteHerdrSessionHost {
                   let title = action.title
             else { return }
             workspace.updateRemoteTmuxTabTitle(panelId: panelId, title: title)
+            // Persist title lock so plugin sync does not thrash after detach.
+            lockAssociationTitle(paneOrTabID: tabID, title: title)
+            if let rootPane = windowMirrorByTabId[tabID]?.activePaneID
+                ?? windowMirrorByTabId[tabID]?.panelsByPaneId.keys.sorted().first
+            {
+                lockAssociationTitle(paneOrTabID: rootPane, title: title)
+            }
         case "close_tab":
             guard let tabID = action.tabID,
                   let panelId = panelIdByTab[tabID]
@@ -486,6 +498,13 @@ final class RemoteHerdrSessionHost {
             if id.kind == .tab, let panelId = panelIdByTab[id.rawID] {
                 workspace?.updateRemoteTmuxTabTitle(panelId: panelId, title: title)
             }
+            lockAssociationTitle(paneOrTabID: id.rawID, title: title)
+            if id.kind == .tab,
+               let rootPane = windowMirrorByTabId[id.rawID]?.activePaneID
+                ?? windowMirrorByTabId[id.rawID]?.panelsByPaneId.keys.sorted().first
+            {
+                lockAssociationTitle(paneOrTabID: rootPane, title: title)
+            }
         case .tabUpserted, .tabClosed, .paneUpserted, .paneClosed,
              .workspaceUpserted, .workspaceClosed, .agentUpserted, .agentClosed,
              .agentStatusUpdated:
@@ -635,5 +654,16 @@ final class RemoteHerdrSessionHost {
             && !view.isHidden
             && view.superview != nil
             && view.window?.isVisible == true
+    }
+
+    /// Persist a native-title lock into the shared plugin associations file.
+    private func lockAssociationTitle(paneOrTabID: String, title: String) {
+        let fingerprint = hostStableSurfaceID.uuidString.lowercased()
+        _ = associationStore.lockTitle(
+            fingerprint: fingerprint,
+            paneID: paneOrTabID,
+            title: title,
+            authority: NestedTitleAuthority.hostSurfacePolicy.rawValue
+        )
     }
 }
