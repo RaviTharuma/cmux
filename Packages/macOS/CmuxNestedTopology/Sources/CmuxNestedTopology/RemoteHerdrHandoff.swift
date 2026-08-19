@@ -339,6 +339,40 @@ public struct RemoteHerdrHandoffStore: Sendable {
         )
     }
 
+    /// Refresh a live native lease so plugin watch does not treat it as stale.
+    ///
+    /// Lease freshness requires both a live pid **and** a heartbeat within TTL
+    /// (same contract as plugin ``heartbeat_plugin_writer``). Call this from the
+    /// attach poll/event loop while the mirror is live.
+    public func heartbeatNative(
+        fingerprint: String,
+        socketPath: String = "",
+        endpointHash: String = "",
+        pid: Int32? = nil
+    ) -> RemoteHerdrWriterLease? {
+        let pid = pid ?? ourPid
+        let decision = resolve(fingerprint: fingerprint)
+        if decision.nativeLive {
+            if let lease = decision.lease, lease.pid > 0, lease.pid != pid {
+                return nil
+            }
+            return write(
+                owner: RemoteHerdrHandoff.ownerNative,
+                fingerprint: fingerprint,
+                socketPath: socketPath.isEmpty ? (decision.lease?.socketPath ?? "") : socketPath,
+                endpointHash: endpointHash.isEmpty ? (decision.lease?.endpointHash ?? "") : endpointHash,
+                pid: pid
+            )
+        }
+        // Stale / unclaimed — re-claim (plugin may have briefly resumed).
+        return claimNative(
+            fingerprint: fingerprint,
+            socketPath: socketPath,
+            endpointHash: endpointHash,
+            pid: pid
+        )
+    }
+
     /// Plugin watch / attach claims the host. No-op when native is live.
     public func claimPlugin(
         fingerprint: String,

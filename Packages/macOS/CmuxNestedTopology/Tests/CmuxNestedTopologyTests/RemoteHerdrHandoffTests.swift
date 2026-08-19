@@ -150,4 +150,28 @@ import Testing
         store.releasePlugin(fingerprint: "fp")
         #expect(store.resolve(fingerprint: "fp").nativeLive)
     }
+
+    @Test func heartbeatNativeRefreshesWithinTTL() throws {
+        var (store, _) = try store(now: 1_000_000)
+        _ = store.claimNative(fingerprint: "fp", pid: store.ourPid)
+        let first = try #require(store.resolve(fingerprint: "fp").lease?.heartbeatMs)
+        store.nowMs = 1_030_000
+        let beat = store.heartbeatNative(fingerprint: "fp", pid: store.ourPid)
+        #expect(beat?.heartbeatMs == 1_030_000)
+        #expect(store.resolve(fingerprint: "fp").nativeLive)
+        // Without heartbeat, advancing past TTL would stale; with heartbeat it stays live.
+        store.nowMs = 1_030_000 + 40_000
+        #expect(store.resolve(fingerprint: "fp").nativeLive)
+        _ = first
+    }
+
+    @Test func heartbeatNativeDoesNotStealForeignNativePid() throws {
+        guard RemoteHerdrHandoff.pidAlive(1) else { return }
+        var (store, _) = try store(now: 1_000_000, pid: 1)
+        _ = store.claimNative(fingerprint: "fp", pid: 1)
+        store.ourPid = ProcessInfo.processInfo.processIdentifier
+        store.nowMs = 1_010_000
+        #expect(store.heartbeatNative(fingerprint: "fp") == nil)
+        #expect(store.resolve(fingerprint: "fp").nativeLive)
+    }
 }

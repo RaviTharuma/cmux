@@ -22,10 +22,16 @@ final class RemoteHerdrController {
     private let handoff: NestedPluginWriterHandoff
 
     /// Plugin lease store (`writer-*` / `native-live`) matching ``cmux-herdr``.
-    private let pluginLeaseStore: RemoteHerdrHandoffStore
+    private var pluginLeaseStore: RemoteHerdrHandoffStore
 
     /// Size-authority store (`size-authority-*`) matching plugin SIGWINCH election.
-    private let sizeAuthorityStore: RemoteHerdrSizeAuthorityStore
+    private var sizeAuthorityStore: RemoteHerdrSizeAuthorityStore
+
+    /// Periodic refresh so lease TTL does not expire while mirrors are live.
+    private var leaseHeartbeatTask: Task<Void, Never>?
+
+    /// Heartbeat period (~TTL/3). Overridable in tests via ``leaseHeartbeatNanoseconds``.
+    var leaseHeartbeatNanoseconds: UInt64 = 15_000_000_000
 
     init(handoffDirectory: URL? = nil) {
         let directory = handoffDirectory ?? Self.defaultHandoffDirectory()
@@ -113,6 +119,7 @@ final class RemoteHerdrController {
         let workspaceId = host.mirroredWorkspaceId
         host.detach(reason: "explicit_detach")
         releaseHandoffIfNeeded(host: host)
+        stopLeaseHeartbeatIfIdle()
         if let workspaceId,
            let manager = AppDelegate.shared?.tabManagerFor(tabId: workspaceId),
            let workspace = manager.tabs.first(where: { $0.id == workspaceId }) {
@@ -128,6 +135,7 @@ final class RemoteHerdrController {
             host.detach(reason: "app_terminate")
             releaseHandoffIfNeeded(host: host)
         }
+        stopLeaseHeartbeatIfIdle()
     }
 
     /// Workspace closed from chrome — detach without killing Herdr.
@@ -146,6 +154,7 @@ final class RemoteHerdrController {
         sessionHosts.removeValue(forKey: entry.key)
         entry.value.detach(reason: reason)
         releaseHandoffIfNeeded(host: entry.value)
+        stopLeaseHeartbeatIfIdle()
     }
 
     /// Whether `surfaceId` is a pane of a mirrored Herdr window.
@@ -194,6 +203,7 @@ final class RemoteHerdrController {
     func register(_ host: RemoteHerdrSessionHost, key: String) throws {
         try acquireHandoff(host: host)
         sessionHosts[key] = host
+        ensureLeaseHeartbeat()
     }
 
     func purgeDeadHosts(endpointHash: String) {
@@ -203,6 +213,7 @@ final class RemoteHerdrController {
             host.detach(reason: "host_tab")
             releaseHandoffIfNeeded(host: host)
         }
+        stopLeaseHeartbeatIfIdle()
     }
 
     func existingMirrorManager(endpointHash: String) -> TabManager? {
@@ -238,6 +249,11 @@ final class RemoteHerdrController {
 
     // MARK: - Plugin writer handoff
 
+    /// Sample wall clock before lease I/O so heartbeat_ms is not frozen at init.
+    private func refreshLeaseClock() {
+        pluginLeaseStore.nowMs = RemoteHerdrHandoff.nowMs()
+    }
+
     private func acquireHandoff(host: RemoteHerdrSessionHost) throws {
         try handoff.acquire(
             hostStableSurfaceID: host.hostStableSurfaceID,
@@ -245,6 +261,7 @@ final class RemoteHerdrController {
         )
         // Also claim the cmux-herdr lease files so plugin sync/watch/mirror yield.
         // Writes fingerprint-scoped + global `native-live` under XDG / Application Support.
+        refreshLeaseClock()
         let fingerprint = pluginLeaseFingerprint(for: host)
         pluginLeaseStore.releasePlugin(fingerprint: fingerprint)
         if pluginLeaseStore.claimNative(
@@ -265,10 +282,48 @@ final class RemoteHerdrController {
         } catch {
             Self.logger.warning("remote-herdr: failed to release plugin writer handoff")
         }
+        refreshLeaseClock()
         let fingerprint = pluginLeaseFingerprint(for: host)
         pluginLeaseStore.releaseNative(fingerprint: fingerprint)
         sizeAuthorityStore.clear(fingerprint: fingerprint)
         host.nativeLive = false
+    }
+
+    /// Keep native leases fresh while any session host is live (TTL is 45s).
+    private func ensureLeaseHeartbeat() {
+        guard leaseHeartbeatTask == nil else { return }
+        let period = leaseHeartbeatNanoseconds
+        leaseHeartbeatTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: period)
+                guard let self else { return }
+                self.refreshLiveLeases()
+                if self.sessionHosts.isEmpty {
+                    self.leaseHeartbeatTask = nil
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopLeaseHeartbeatIfIdle() {
+        guard sessionHosts.isEmpty else { return }
+        leaseHeartbeatTask?.cancel()
+        leaseHeartbeatTask = nil
+    }
+
+    /// Rewrite lease + size-authority heartbeats for every live host.
+    func refreshLiveLeases() {
+        refreshLeaseClock()
+        for host in sessionHosts.values where host.nativeLive {
+            let fingerprint = pluginLeaseFingerprint(for: host)
+            _ = pluginLeaseStore.heartbeatNative(
+                fingerprint: fingerprint,
+                socketPath: host.socketPath,
+                endpointHash: RemoteHerdrLifecycle.endpointHash(host.socketPath)
+            )
+            _ = sizeAuthorityStore.claimNative(fingerprint: fingerprint)
+        }
     }
 
     /// Fingerprint shared with plugin ``_parent_key`` when ``CMUX_SURFACE_ID`` is this UUID.
