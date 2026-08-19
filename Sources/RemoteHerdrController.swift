@@ -24,12 +24,15 @@ final class RemoteHerdrController {
     /// Plugin lease store (`writer-*` / `native-live`) matching ``cmux-herdr``.
     private let pluginLeaseStore: RemoteHerdrHandoffStore
 
+    /// Size-authority store (`size-authority-*`) matching plugin SIGWINCH election.
+    private let sizeAuthorityStore: RemoteHerdrSizeAuthorityStore
+
     init(handoffDirectory: URL? = nil) {
         let directory = handoffDirectory ?? Self.defaultHandoffDirectory()
         self.handoff = NestedPluginWriterHandoff(directoryURL: directory)
-        self.pluginLeaseStore = RemoteHerdrHandoffStore(
-            directories: RemoteHerdrHandoff.stateDirectories()
-        )
+        let sharedDirs = RemoteHerdrHandoff.stateDirectories()
+        self.pluginLeaseStore = RemoteHerdrHandoffStore(directories: sharedDirs)
+        self.sizeAuthorityStore = RemoteHerdrSizeAuthorityStore(directories: sharedDirs)
     }
 
     /// Beta gate: ``remoteHerdrMirror`` **or** nested topology.
@@ -251,6 +254,8 @@ final class RemoteHerdrController {
         ) == nil {
             Self.logger.warning("remote-herdr: plugin lease claim returned nil after release")
         }
+        // Own size-authority so plugin attach-pane SIGWINCH handlers no-op.
+        _ = sizeAuthorityStore.claimNative(fingerprint: fingerprint)
         host.nativeLive = true
     }
 
@@ -260,7 +265,9 @@ final class RemoteHerdrController {
         } catch {
             Self.logger.warning("remote-herdr: failed to release plugin writer handoff")
         }
-        pluginLeaseStore.releaseNative(fingerprint: pluginLeaseFingerprint(for: host))
+        let fingerprint = pluginLeaseFingerprint(for: host)
+        pluginLeaseStore.releaseNative(fingerprint: fingerprint)
+        sizeAuthorityStore.clear(fingerprint: fingerprint)
         host.nativeLive = false
     }
 
