@@ -323,6 +323,11 @@ final class RemoteHerdrController {
                 endpointHash: RemoteHerdrLifecycle.endpointHash(host.socketPath)
             )
             _ = sizeAuthorityStore.claimNative(fingerprint: fingerprint)
+            // Nested sidebar lock must not go stale either (pid + heartbeat TTL).
+            try? handoff.heartbeat(
+                hostStableSurfaceID: host.hostStableSurfaceID,
+                attachmentID: host.attachmentID
+            )
         }
     }
 
