@@ -2089,7 +2089,16 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         case userInitiated
         case automationPreload
         case restoration
+        /// Config-driven layout application (`cmux.json` layouts, saved
+        /// layouts, `cmux layout`). Unlike `.restoration`, applying a layout
+        /// is a creation request, not the return of a pane the user already
+        /// had, so it honors the browser-disabled gate.
+        case layoutApplication
 
+        /// Whether this creation path may build a browser panel while the
+        /// user-level gate says the browser is disabled. Session restore may
+        /// (it re-materializes pre-existing panes); an MDM-managed disable is
+        /// checked separately and refuses every path.
         var permitsCreationWhenBrowserDisabled: Bool {
             self == .restoration
         }
@@ -3293,7 +3302,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         self.surfaceTabBarDirectory = initialDirectory
 
         // Preserve terminal state and inherit tab-strip sizing without repeated config parsing.
-        let initialSurfaceTabBarFontSize = GhosttyConfig.load(globalFontMagnificationPercent: GlobalFontMagnification.storedPercent).surfaceTabBarFontSize
+        let initialSurfaceTabBarFontSize = GhosttyConfig.loadForCmux(globalFontMagnificationPercent: GlobalFontMagnification.storedPercent).surfaceTabBarFontSize
         let appearance = Self.bonsplitAppearance(
             from: GhosttyApp.shared.defaultBackgroundColor,
             backgroundOpacity: GhosttyApp.shared.defaultBackgroundOpacity,
@@ -3335,13 +3344,26 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         }
 
         var initialTabId: TabID?
+        if initialDetachedSurface == nil,
+           initialSurface == .browser,
+           !BrowserAvailabilitySettings.isEnabled(),
+           let externalFallbackURL = initialBrowserURL {
+            // Browser disabled (user setting or MDM policy): a URL-carrying
+            // request must still reach the user's default browser. Only the
+            // blank browser pane silently degrades to the terminal below.
+            NSWorkspace.shared.open(externalFallbackURL)
+        }
         if let initialDetachedSurface {
             if let initialPaneId = bonsplitController.allPaneIds.first,
                attachDetachedSurface(initialDetachedSurface, inPane: initialPaneId, focus: false) != nil {
                 initialTabId = surfaceIdFromPanelId(initialDetachedSurface.panelId)
             }
-        } else if initialSurface == .browser {
+        } else if initialSurface == .browser, BrowserAvailabilitySettings.isEnabled() {
             // Create the initial browser panel in its default new-tab state.
+            // When the browser is disabled (user setting or MDM policy) this
+            // branch is skipped and the workspace boots with a terminal; a
+            // URL-carrying request opens externally (see the fallback above
+            // the chain).
             // Mirrors the minimal terminal branch below plus the browser panel
             // wiring `attachDetachedSurface` performs for reattached panels.
             let browserPanel = BrowserPanel(
@@ -6462,7 +6484,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
 
     nonisolated static let remotePTYSessionEnvironmentKey = "CMUX_REMOTE_PTY_SESSION_ID"
 
-    private nonisolated static func parsedDefaultSSHPTYSessionID(_ value: String) -> (workspaceId: UUID, panelId: UUID)? {
+    nonisolated static func parsedDefaultSSHPTYSessionID(_ value: String) -> (workspaceId: UUID, panelId: UUID)? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("ssh-") else { return nil }
         let suffix = String(trimmed.dropFirst(4))
@@ -6998,6 +7020,8 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         target: String,
         externalRemoteTerminalDocks: [DockSplitStore] = []
     ) {
+        let reconnectWasInFlight = remoteControllerConnectionState == .connecting ||
+            remoteControllerConnectionState == .reconnecting
         let trimmedDetail = detail?.trimmingCharacters(in: .whitespacesAndNewlines)
         let proxyOnlyError = trimmedDetail.map(Self.isProxyOnlyRemoteError) ?? false
         let preservesProxyFailureForLiveTerminal =
@@ -7026,7 +7050,10 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         remoteControllerConnectionDetail = detail
         remoteConnectionState = effectiveState
         remoteConnectionDetail = detail
-        if state == .connected { _ = reattachPersistentRemotePTYPanels() }
+        if state == .connected,
+           (remoteSessionController != nil || !reconnectWasInFlight) {
+            _ = reattachPersistentRemotePTYPanels()
+        }
         applyBrowserRemoteWorkspaceStatusToPanels()
 
         if suppressProxyOnlySidebarError {
@@ -8660,7 +8687,11 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         // 1:1 view of a tmux session). See ``newBrowserSurface(inPane:)``.
         if isRemoteTmuxMirror { return nil }
         let browserEnabled = BrowserAvailabilitySettings.isEnabled()
-        guard browserEnabled || creationPolicy.permitsCreationWhenBrowserDisabled else {
+        // Under an MDM-managed disable no path may create a browser panel,
+        // including session restore (mirrors the Dock restore behavior).
+        let creationPermittedWhileDisabled = creationPolicy.permitsCreationWhenBrowserDisabled
+            && !BrowserAvailabilitySettings.isManagedByPolicy
+        guard browserEnabled || creationPermittedWhileDisabled else {
             if allowsExternalBrowserFallback,
                let externalURL = externalBrowserFallbackURL(
                 url: url,
@@ -8784,7 +8815,11 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         // invariant — so refuse browser creation in a mirror workspace.
         if isRemoteTmuxMirror { return nil }
         let browserEnabled = BrowserAvailabilitySettings.isEnabled()
-        guard browserEnabled || creationPolicy.permitsCreationWhenBrowserDisabled else {
+        // Under an MDM-managed disable no path may create a browser panel,
+        // including session restore (mirrors the Dock restore behavior).
+        let creationPermittedWhileDisabled = creationPolicy.permitsCreationWhenBrowserDisabled
+            && !BrowserAvailabilitySettings.isManagedByPolicy
+        guard browserEnabled || creationPermittedWhileDisabled else {
             if allowsExternalBrowserFallback,
                let externalURL = externalBrowserFallbackURL(
                 url: url,
@@ -11770,7 +11805,9 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
               let startupInput = launchSnapshot.forkStartupInput(
                   fileManager: fileManager,
                   temporaryDirectory: temporaryDirectory,
-                  allowLauncherScript: !isRemoteFork
+                  allowLauncherScript: !isRemoteFork,
+                  // Remote forks type into the remote host's shell: keep POSIX.
+                  dialect: isRemoteFork ? .remoteHost : .loginShell
               ) else {
             return nil
         }
@@ -11803,7 +11840,9 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
               let startupInput = launchSnapshot.forkStartupInput(
                   fileManager: fileManager,
                   temporaryDirectory: temporaryDirectory,
-                  allowLauncherScript: remoteStartupCommand == nil
+                  allowLauncherScript: remoteStartupCommand == nil,
+                  // Remote forks type into the remote host's shell: keep POSIX.
+                  dialect: remoteStartupCommand == nil ? .loginShell : .remoteHost
               ) else {
             return nil
         }
@@ -11870,7 +11909,9 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
               let startupInput = launchSnapshot.forkStartupInput(
                   fileManager: fileManager,
                   temporaryDirectory: temporaryDirectory,
-                  allowLauncherScript: remoteStartupCommand == nil
+                  allowLauncherScript: remoteStartupCommand == nil,
+                  // Remote forks type into the remote host's shell: keep POSIX.
+                  dialect: remoteStartupCommand == nil ? .loginShell : .remoteHost
               ) else {
             return nil
         }
@@ -13341,11 +13382,17 @@ extension Workspace: BonsplitDelegate {
             case .cloudVM:
                 _ = AppDelegate.shared?.performCloudVMAction(tabManager: owningTabManager, preferredWindow: presentingWindow, debugSource: "surfaceTabBar.cloudVM")
             case .mobileConnect:
-                _ = AppDelegate.shared?.performMobileConnectWorkspaceAction(
-                    tabManager: owningTabManager,
-                    preferredWindow: presentingWindow,
-                    debugSource: "surfaceTabBar.mobileConnect"
-                )
+                // Audible feedback instead of a silent no-op when the managed
+                // policy suppresses the pairing chokepoint.
+                if MobileRemoteControlPolicy.isDisabled {
+                    NSSound.beep()
+                } else {
+                    _ = AppDelegate.shared?.performMobileConnectWorkspaceAction(
+                        tabManager: owningTabManager,
+                        preferredWindow: presentingWindow,
+                        debugSource: "surfaceTabBar.mobileConnect"
+                    )
+                }
             case .newSimulator:
                 _ = newSimulatorSurface(inPane: pane, focus: true)
             case .newTerminal, .newBrowser, .splitRight, .splitDown:
