@@ -337,6 +337,8 @@ struct ControlCommandExecutionPolicyTests {
             "list_notifications", "clear_notifications",
         ]
         #expect(ControlCommandExecutionPolicy.notificationV1Commands == notification)
+        let agentJournal: Set<String> = ["agent_journal_append"]
+        #expect(ControlCommandExecutionPolicy.agentJournalV1Commands == agentJournal)
         let terminalRead: Set<String> = ["read_screen"]
         #expect(ControlCommandExecutionPolicy.terminalReadV1Commands == terminalRead)
         let diagnosticRead: Set<String> = ["iroh_diag"]
@@ -359,11 +361,13 @@ struct ControlCommandExecutionPolicyTests {
             ControlCommandExecutionPolicy.configurationMutationV1Commands
                 == configurationMutations
         )
-        let expectedWorker = telemetry.union(notification).union(terminalRead)
+        let expectedWorker = telemetry.union(notification).union(agentJournal)
+            .union(terminalRead)
             .union(diagnosticRead).union(resolutionReads).union(sends)
             .union(configurationMutations).union(windowCapture).union(["ping"])
         #expect(ControlCommandExecutionPolicy.socketWorkerV1Commands == expectedWorker)
-        // Every member except terminal and diagnostic reads, blocking
+        // Every member except terminal and diagnostic reads, the journal
+        // append (durability fsync must never run inline on main), blocking
         // configuration mutations, and async window capture is deliberately
         // main-thread callable (deadlock-free inline: bus enqueues plus
         // inline-collapsing hops).
@@ -372,6 +376,7 @@ struct ControlCommandExecutionPolicyTests {
                 == expectedWorker
                     .subtracting(terminalRead)
                     .subtracting(diagnosticRead)
+                    .subtracting(agentJournal)
                     .subtracting(configurationMutations)
                     .subtracting(windowCapture)
         )
