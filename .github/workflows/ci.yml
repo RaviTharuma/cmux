@@ -1680,6 +1680,7 @@ jobs:
             CmuxBrowser
             CmuxCanvasUI
             CmuxCore
+            CmuxNestedTopology
             CmuxRemoteDaemon
             CmuxRemoteWorkspace
             CmuxRemoteSession
